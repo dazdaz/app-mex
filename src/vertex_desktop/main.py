@@ -47,9 +47,23 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 3.7 Sonnet",
         "max_input_tokens": 200000,
         "max_output_tokens": 64000,
-        "icon": "🎭",
+        "icon": "üé≠",
         "color": "#FF6B6B",
         "description": "Fast, balanced performance with 200k input / 64k output tokens",
+        "pricing": {
+            "input": 0.003,  # $0.003 per 1K tokens
+            "output": 0.015  # $0.015 per 1K tokens
+        }
+    },
+    "claude-sonnet-4-5": {
+        "publisher": "anthropic",
+        "model_id": "claude-sonnet-4-5@20250929:streamRawPredict",
+        "display_name": "Claude 4.5 Sonnet",
+        "max_input_tokens": 200000,
+        "max_output_tokens": 64000,
+        "icon": "üöÄ",
+        "color": "#9333EA",
+        "description": "Latest Sonnet model with enhanced capabilities",
         "pricing": {
             "input": 0.003,  # $0.003 per 1K tokens
             "output": 0.015  # $0.015 per 1K tokens
@@ -61,7 +75,7 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 4.1 Opus",
         "max_input_tokens": 200000,
         "max_output_tokens": 32000,
-        "icon": "🎨",
+        "icon": "üëë",
         "color": "#C92A2A",
         "description": "Most capable model with 200k input / 32k output tokens",
         "pricing": {
@@ -75,7 +89,7 @@ AVAILABLE_MODELS = {
         "display_name": "Gemini 2.5 Pro",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65536,
-        "icon": "💎",
+        "icon": "üíé",
         "color": "#4DABF7",
         "description": "Advanced multimodal with 1M+ input / 65k output tokens",
         "pricing": {
@@ -89,7 +103,7 @@ AVAILABLE_MODELS = {
         "display_name": "Gemini 2.5 Flash",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65535,
-        "icon": "⚡",
+        "icon": "‚ö°",
         "color": "#69DB7C",
         "description": "Fastest response with 1M+ input / 65k output tokens",
         "pricing": {
@@ -204,7 +218,7 @@ class AboutDialog(QDialog):
         layout.addWidget(title_label)
 
         # Version info
-        version_label = QLabel("Version 1.0.0")
+        version_label = QLabel("Version 1.1.0")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet(f"color: {COLORS['text_secondary']}; margin-bottom: 20px;")
         layout.addWidget(version_label)
@@ -249,22 +263,22 @@ class AboutDialog(QDialog):
         <div class="info">
             <p><b>Approximations used in MEX:</b></p>
             <ul>
-                <li>1 token ≈ 0.75 words</li>
-                <li>1 token ≈ 4 characters</li>
-                <li>100 tokens ≈ 75 words</li>
+                <li>1 token ‚âà 0.75 words</li>
+                <li>1 token ‚âà 4 characters</li>
+                <li>100 tokens ‚âà 75 words</li>
             </ul>
         </div>
 
         <div class="warning">
-            <p><b>⚠️ Important Note:</b><br>
+            <p><b>‚ö†Ô∏è Important Note:</b><br>
             The actual token count may vary slightly depending on the specific tokenizer used.
             Different models use different tokenization methods, so the character and token counts
-            shown are estimates. The actual usage may differ by ±10-20%.</p>
+            shown are estimates. The actual usage may differ by ¬±10-20%.</p>
         </div>
 
         <h3>Features</h3>
         <ul>
-            <li>Support for multiple AI models (Claude 3.7, Claude 4.1, Gemini 2.5)</li>
+            <li>Support for multiple AI models (Claude 3.7, 4.5, 4.1, Gemini 2.5)</li>
             <li>Real-time character and token counting</li>
             <li>Multiple query tabs with optional synchronization</li>
             <li>Dark/Light mode toggle</li>
@@ -279,6 +293,7 @@ class AboutDialog(QDialog):
         <h3>Model Token Limits</h3>
         <ul>
             <li><b>Claude 3.7 Sonnet:</b> 200k input / 64k output tokens</li>
+            <li><b>Claude 4.5 Sonnet:</b> 200k input / 64k output tokens</li>
             <li><b>Claude 4.1 Opus:</b> 200k input / 32k output tokens</li>
             <li><b>Gemini 2.5 Pro:</b> 1M+ input / 65k output tokens</li>
             <li><b>Gemini 2.5 Flash:</b> 1M+ input / 65k output tokens</li>
@@ -373,7 +388,7 @@ class ProjectIdDialog(QDialog):
         layout.addWidget(self.project_input)
 
         # Disclaimer box
-        disclaimer_box = QGroupBox("⚠️ Disclaimer")
+        disclaimer_box = QGroupBox("‚ö†Ô∏è Disclaimer")
         disclaimer_box.setStyleSheet(f"""
             QGroupBox {{
                 font-weight: bold;
@@ -393,10 +408,10 @@ class ProjectIdDialog(QDialog):
 
         disclaimer_layout = QVBoxLayout()
         disclaimer_text = QLabel(
-            "• Use at your own risk\n"
-            "• All pricing shown is fictional and for demonstration only\n"
-            "• Actual costs may vary significantly\n"
-            "• This is not an official Google product"
+            "‚Ä¢ Use at your own risk\n"
+            "‚Ä¢ All pricing shown is fictional and for demonstration only\n"
+            "‚Ä¢ Actual costs may vary significantly\n"
+            "‚Ä¢ This is not an official Google product"
         )
         disclaimer_text.setWordWrap(True)
         disclaimer_text.setStyleSheet(f"""
@@ -603,7 +618,7 @@ class APIWorker(QThread):
             return {
                 "anthropic_version": "vertex-2023-10-16",
                 "messages": [{"role": "user", "content": self.prompt}],
-                "max_tokens": self.model_config["max_output_tokens"],
+                "max_tokens": min(self.model_config["max_output_tokens"], 1024),  # Use a reasonable default
                 "stream": True
             }
         elif self.model_config["publisher"] == "google":
@@ -722,7 +737,7 @@ class APIWorker(QThread):
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            self.progress.emit("🔐 Authenticating...", 20)
+            self.progress.emit("üîê Authenticating...", 20)
             access_token = self.get_access_token()
 
             if self._is_cancelled:
@@ -746,8 +761,10 @@ class APIWorker(QThread):
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            self.progress.emit("🚀 Sending request...", 50)
+            self.progress.emit("üì§ Sending request...", 50)
             logging.info(f"Sending request to: {url}")
+            logging.info(f"Payload: {json.dumps(payload, indent=2)}")
+            
             response = requests.post(url, headers=headers, json=payload, timeout=60, stream=True)
 
             if self._is_cancelled:
@@ -760,7 +777,7 @@ class APIWorker(QThread):
                 self.finished.emit("", error_msg, "", 0, 0)
                 return
 
-            self.progress.emit("📝 Processing response...", 80)
+            self.progress.emit("üîß Processing response...", 80)
             response_text = response.text
             logging.info(f"Received response of length: {len(response_text)}")
 
@@ -774,7 +791,7 @@ class APIWorker(QThread):
             # Log what we're returning
             logging.info(f"Returning parsed response of length: {len(parsed_response)}")
 
-            self.progress.emit("✅ Complete!", 100)
+            self.progress.emit("‚úì Complete!", 100)
             self.finished.emit(parsed_response, "", response_text, input_tokens, output_tokens)
 
         except Exception as e:
@@ -825,12 +842,12 @@ class QueryTab(QWidget):
         header_layout.setSpacing(8)
 
         # Execute and Stop buttons
-        self.generate_btn = AnimatedButton("🚀 Execute", primary=True)
+        self.generate_btn = AnimatedButton("üì§ Execute", primary=True)
         self.generate_btn.clicked.connect(self.generate_response)
         header_layout.addWidget(self.generate_btn)
 
         # Stop button (initially hidden)
-        self.stop_btn = AnimatedButton("⏹️ Stop", primary=True)
+        self.stop_btn = AnimatedButton("üõë Stop", primary=True)
         self.stop_btn.clicked.connect(self.stop_query)
         self.stop_btn.setVisible(False)
         self.stop_btn.setStyleSheet(f"""
@@ -858,11 +875,11 @@ class QueryTab(QWidget):
         self.model_combo.setMaximumWidth(250)
         self.update_combo_style()
 
-        # Add models to combo box - Claude Opus 4.1 will be added second
+        # Add models to combo box - Claude 4.5 Sonnet as default
         for key, config in AVAILABLE_MODELS.items():
             self.model_combo.addItem(f"{config['icon']} {config['display_name']}", key)
 
-        # Set Claude Opus 4.1 as default (it's the second item, index 1)
+        # Set Claude 4.5 Sonnet as default (it's the second item, index 1)
         self.model_combo.setCurrentIndex(1)
 
         # Model info label with tooltip
@@ -930,12 +947,12 @@ class QueryTab(QWidget):
         self.show_raw_json_checkbox.stateChanged.connect(self.toggle_response_format)
 
         # Add Save button
-        self.save_btn = AnimatedButton("💾 Save")
+        self.save_btn = AnimatedButton("üíæ Save")
         self.save_btn.clicked.connect(self.save_response)
         self.save_btn.setEnabled(False)
 
         # Copy Output button
-        self.copy_output_btn = AnimatedButton("📋 Copy Output")
+        self.copy_output_btn = AnimatedButton("üìã Copy Output")
         self.copy_output_btn.clicked.connect(self.copy_output)
         self.copy_output_btn.setEnabled(False)
 
@@ -1002,7 +1019,7 @@ class QueryTab(QWidget):
 
         # Response header
         response_header = QHBoxLayout()
-        response_label = QLabel("💬 Response")
+        response_label = QLabel("üí¨ Response")
         response_label.setFont(font_manager.get_font("subheading"))
         response_label.setStyleSheet(f"color: {COLORS['text_primary']}; font-weight: 600;")
 
@@ -1111,11 +1128,11 @@ class QueryTab(QWidget):
         else:
             price_text = f"${total_cost:.2f}"
 
-        self.pricing_label.setText(f"💰 ~{price_text} USD*")
+        self.pricing_label.setText(f"üí∞ ~{price_text} USD*")
         self.pricing_label.setToolTip(
             f"Fictional pricing estimate:\n"
-            f"Input: ~{input_tokens:,} tokens × ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
-            f"Output: ~{estimated_output_tokens:,} tokens × ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
+            f"Input: ~{input_tokens:,} tokens √ó ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
+            f"Output: ~{estimated_output_tokens:,} tokens √ó ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
             f"Total: ~{price_text} USD\n\n"
             f"*Prices are fictional and for demonstration only"
         )
@@ -1135,7 +1152,7 @@ class QueryTab(QWidget):
         self.stop_btn.setVisible(False)
         self.generate_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.response_info.setText("⏹️ Stopped")
+        self.response_info.setText("üõë Stopped")
         self.show_message("Query stopped", "warning")
 
     def copy_output(self):
@@ -1266,9 +1283,9 @@ class QueryTab(QWidget):
             tooltip_text = f"""
             <b>{config['display_name']}</b><br><br>
             <b>Input Token Limit:</b> {config['max_input_tokens']:,} tokens<br>
-            ≈ {input_words:,} words or ~{input_chars:,} characters<br><br>
+            ‚âà {input_words:,} words or ~{input_chars:,} characters<br><br>
             <b>Output Token Limit:</b> {config['max_output_tokens']:,} tokens<br>
-            ≈ {output_words:,} words or ~{output_chars:,} characters<br><br>
+            ‚âà {output_words:,} words or ~{output_chars:,} characters<br><br>
             <b>Fictional Pricing:</b><br>
             Input: ${pricing['input']:.3f} per 1K tokens<br>
             Output: ${pricing['output']:.3f} per 1K tokens<br><br>
@@ -1284,7 +1301,7 @@ class QueryTab(QWidget):
         """Update character and token counts with visual feedback"""
         count = len(self.prompt_edit.toPlainText())
 
-        # Calculate approximate token count (1 token ≈ 4 characters)
+        # Calculate approximate token count (1 token ‚âà 4 characters)
         approx_tokens = count // 4
 
         # Update input labels
@@ -1555,7 +1572,7 @@ class QueryTab(QWidget):
 
         if error:
             self.show_message(f"Error: {error}", "error")
-            self.response_info.setText("❌ Failed")
+            self.response_info.setText("‚ùå Failed")
         else:
             elapsed = self.query_timer.elapsed() / 1000.0  # Convert to seconds
 
@@ -1589,16 +1606,16 @@ class QueryTab(QWidget):
                 else:
                     price_text = f"${total_cost:.2f}"
 
-                self.response_info.setText(f"✅ {elapsed:.1f}s | {price_text} USD*")
+                self.response_info.setText(f"‚úì {elapsed:.1f}s | {price_text} USD*")
                 self.response_info.setToolTip(
                     f"Query completed in {elapsed:.1f} seconds\n"
-                    f"Input: {input_tokens:,} tokens × ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
-                    f"Output: {output_tokens:,} tokens × ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
+                    f"Input: {input_tokens:,} tokens √ó ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
+                    f"Output: {output_tokens:,} tokens √ó ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
                     f"Total: {price_text} USD\n\n"
                     f"*Fictional pricing for demonstration only"
                 )
             else:
-                self.response_info.setText(f"✅ {elapsed:.1f}s")
+                self.response_info.setText(f"‚úì {elapsed:.1f}s")
 
             # Ensure the response is visible by scrolling to top
             cursor = self.response_edit.textCursor()
@@ -1634,19 +1651,19 @@ class QueryTab(QWidget):
         self.status_label.setVisible(True)
 
         if msg_type == "success":
-            icon = "✅"
+            icon = "‚úì"
             bg_color = COLORS['success_bg']
             text_color = "#065F46" if not theme_manager.is_dark_mode else "#A7F3D0"
         elif msg_type == "error":
-            icon = "❌"
+            icon = "‚ùå"
             bg_color = COLORS['error_bg']
             text_color = "#991B1B" if not theme_manager.is_dark_mode else "#FCA5A5"
         elif msg_type == "warning":
-            icon = "⚠️"
+            icon = "‚ö†Ô∏è"
             bg_color = "#FEF3C7" if not theme_manager.is_dark_mode else "#78350F"
             text_color = "#92400E" if not theme_manager.is_dark_mode else "#FDE68A"
         else:
-            icon = "ℹ️"
+            icon = "‚ÑπÔ∏è"
             bg_color = COLORS['info_bg']
             text_color = "#1E40AF" if not theme_manager.is_dark_mode else "#93C5FD"
 
@@ -1677,9 +1694,9 @@ class MainWindow(QMainWindow):
         """Authenticate with Google Cloud"""
         try:
             self.credentials, project = default()
-            logging.info(f"✅ Authenticated with credentials for project: {project}")
+            logging.info(f"‚úì Authenticated with credentials for project: {project}")
         except Exception as e:
-            logging.error(f"❌ Authentication failed: {e}")
+            logging.error(f"‚ùå Authentication failed: {e}")
             QMessageBox.critical(None, "Authentication Error",
                                 f"Failed to authenticate with Google Cloud:\n{str(e)}\n\n"
                                 "Please ensure you have valid credentials set up.")
@@ -1707,7 +1724,7 @@ class MainWindow(QMainWindow):
         header_layout.setSpacing(8)
 
         # Execute All and New Tab buttons
-        self.generate_all_btn = AnimatedButton("⚡ Execute All", primary=True)
+        self.generate_all_btn = AnimatedButton("‚ö° Execute All", primary=True)
         self.generate_all_btn.clicked.connect(self.generate_all)
 
         self.add_tab_btn = AnimatedButton("+ New Tab")
@@ -1723,7 +1740,7 @@ class MainWindow(QMainWindow):
         app_title.setStyleSheet(f"color: {COLORS['text_primary']}; margin: 0 20px;")
 
         # Add project badge
-        project_badge = QLabel(f"📁 {PROJECT_ID}")
+        project_badge = QLabel(f"üîë {PROJECT_ID}")
         project_badge.setStyleSheet(f"""
             color: {COLORS['primary']};
             font-size: {font_manager.base_size - 1}px;
@@ -1739,12 +1756,12 @@ class MainWindow(QMainWindow):
         header_layout.addStretch()
 
         # Dark/Light mode toggle button
-        self.theme_btn = AnimatedButton("🌙 Dark" if not theme_manager.is_dark_mode else "☀️ Light")
+        self.theme_btn = AnimatedButton("üåô Dark" if not theme_manager.is_dark_mode else "‚òÄÔ∏è Light")
         self.theme_btn.clicked.connect(self.toggle_theme)
         header_layout.addWidget(self.theme_btn)
 
         # About button
-        self.about_btn = AnimatedButton("ℹ️ About")
+        self.about_btn = AnimatedButton("‚ÑπÔ∏è About")
         self.about_btn.clicked.connect(self.show_about_dialog)
         header_layout.addWidget(self.about_btn)
 
@@ -1831,7 +1848,7 @@ class MainWindow(QMainWindow):
         COLORS = theme_manager.toggle_theme()
 
         # Update button text
-        self.theme_btn.setText("🌙 Dark" if not theme_manager.is_dark_mode else "☀️ Light")
+        self.theme_btn.setText("üåô Dark" if not theme_manager.is_dark_mode else "‚òÄÔ∏è Light")
 
         # Update main window style
         self.update_main_style()
