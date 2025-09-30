@@ -51,8 +51,8 @@ AVAILABLE_MODELS = {
         "color": "#FF6B6B",
         "description": "Fast, balanced performance with 200k input / 64k output tokens",
         "pricing": {
-            "input": 0.003,  # $0.003 per 1K tokens
-            "output": 0.015  # $0.015 per 1K tokens
+            "input": 0.003,
+            "output": 0.015
         }
     },
     "claude-sonnet-4-5": {
@@ -61,12 +61,12 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 4.5 Sonnet",
         "max_input_tokens": 200000,
         "max_output_tokens": 64000,
-        "icon": "üöÄ",
+        "icon": "üé™",
         "color": "#9333EA",
         "description": "Latest Sonnet model with enhanced capabilities",
         "pricing": {
-            "input": 0.003,  # $0.003 per 1K tokens
-            "output": 0.015  # $0.015 per 1K tokens
+            "input": 0.003,
+            "output": 0.015
         }
     },
     "claude-opus-4-1": {
@@ -79,8 +79,8 @@ AVAILABLE_MODELS = {
         "color": "#C92A2A",
         "description": "Most capable model with 200k input / 32k output tokens",
         "pricing": {
-            "input": 0.015,  # $0.015 per 1K tokens
-            "output": 0.075  # $0.075 per 1K tokens
+            "input": 0.015,
+            "output": 0.075
         }
     },
     "gemini-2-5-pro": {
@@ -93,8 +93,8 @@ AVAILABLE_MODELS = {
         "color": "#4DABF7",
         "description": "Advanced multimodal with 1M+ input / 65k output tokens",
         "pricing": {
-            "input": 0.0025,  # $0.0025 per 1K tokens
-            "output": 0.01   # $0.01 per 1K tokens
+            "input": 0.0025,
+            "output": 0.01
         }
     },
     "gemini-2-5-flash": {
@@ -107,8 +107,8 @@ AVAILABLE_MODELS = {
         "color": "#69DB7C",
         "description": "Fastest response with 1M+ input / 65k output tokens",
         "pricing": {
-            "input": 0.00025,  # $0.00025 per 1K tokens
-            "output": 0.001    # $0.001 per 1K tokens
+            "input": 0.00025,
+            "output": 0.001
         }
     }
 }
@@ -618,7 +618,7 @@ class APIWorker(QThread):
             return {
                 "anthropic_version": "vertex-2023-10-16",
                 "messages": [{"role": "user", "content": self.prompt}],
-                "max_tokens": min(self.model_config["max_output_tokens"], 1024),  # Use a reasonable default
+                "max_tokens": self.model_config["max_output_tokens"],  # Use full output token limit
                 "stream": True
             }
         elif self.model_config["publisher"] == "google":
@@ -626,33 +626,53 @@ class APIWorker(QThread):
                 "contents": [{
                     "role": "user",
                     "parts": [{"text": self.prompt}]
-                }]
+                }],
+                "generationConfig": {
+                    "maxOutputTokens": self.model_config["max_output_tokens"]  # Use full output token limit
+                }
             }
         else:
             raise ValueError(f"Unknown publisher: {self.model_config['publisher']}")
 
     def parse_anthropic_stream(self, response_text):
-        """Parse Anthropic's Server-Sent Events streaming format."""
+        """Parse Anthropic's Server-Sent Events streaming format - COMPLETE response."""
         full_text = ""
-        for line in response_text.split('\n'):
+        lines = response_text.split('\n')
+
+        logging.info(f"Parsing Anthropic stream with {len(lines)} lines")
+
+        for line in lines:
             if line.startswith('data: '):
                 try:
                     data_str = line[6:].strip()
                     if data_str and data_str != '[DONE]':
                         data = json.loads(data_str)
+
+                        # Handle content_block_delta events
                         if data.get("type") == "content_block_delta":
                             delta_text = data.get("delta", {}).get("text", "")
                             full_text += delta_text
-                except json.JSONDecodeError:
+
+                        # Handle content_block_start events (initial content)
+                        elif data.get("type") == "content_block_start":
+                            block_text = data.get("content_block", {}).get("text", "")
+                            full_text += block_text
+
+                except json.JSONDecodeError as e:
+                    logging.warning(f"Failed to parse line as JSON: {line[:100]}")
                     continue
+
+        logging.info(f"Parsed Anthropic response length: {len(full_text)} characters")
         return full_text
 
     def parse_google_stream(self, response_text):
-        """Parse Google's streaming format - handle newline-delimited JSON."""
+        """Parse Google's streaming format - COMPLETE response."""
         full_text = ""
 
         # Split by lines and filter out empty lines and commas
         lines = [line.strip() for line in response_text.split('\n') if line.strip() and line.strip() != ',']
+
+        logging.info(f"Parsing Google stream with {len(lines)} valid lines")
 
         # Handle array format: [obj1, obj2, obj3]
         if response_text.strip().startswith('['):
@@ -667,6 +687,7 @@ class APIWorker(QThread):
                         if parts:
                             text = parts[0].get("text", "")
                             full_text += text
+                logging.info(f"Parsed Google array response length: {len(full_text)} characters")
                 return full_text
             except json.JSONDecodeError:
                 pass
@@ -693,16 +714,18 @@ class APIWorker(QThread):
             except json.JSONDecodeError:
                 continue
 
+        logging.info(f"Parsed Google response length: {len(full_text)} characters")
         return full_text
 
     def parse_response(self, response_text, response_data=None):
-        """Parse the response based on the model publisher and format."""
+        """Parse the response based on the model publisher and format - COMPLETE response."""
         try:
             if self.model_config["publisher"] == "anthropic":
                 # First try streaming format
                 if "data:" in response_text:
                     parsed = self.parse_anthropic_stream(response_text)
                     if parsed:
+                        logging.info(f"Successfully parsed Anthropic streaming response: {len(parsed)} chars")
                         return parsed
 
                 # Then try non-streaming JSON format
@@ -712,15 +735,18 @@ class APIWorker(QThread):
                             return response_data["content"][0].get("text", "")
 
                 # If neither worked, return the raw text
+                logging.warning("Could not parse Anthropic response, returning raw text")
                 return response_text
 
             elif self.model_config["publisher"] == "google":
                 # Parse Google's streaming format
                 parsed = self.parse_google_stream(response_text)
                 if parsed:
+                    logging.info(f"Successfully parsed Google response: {len(parsed)} chars")
                     return parsed
 
                 # If parsing failed, return raw text
+                logging.warning("Could not parse Google response, returning raw text")
                 return response_text
             else:
                 return response_text
@@ -761,11 +787,11 @@ class APIWorker(QThread):
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            self.progress.emit("üì§ Sending request...", 50)
+            self.progress.emit("üì° Sending request...", 50)
             logging.info(f"Sending request to: {url}")
             logging.info(f"Payload: {json.dumps(payload, indent=2)}")
-            
-            response = requests.post(url, headers=headers, json=payload, timeout=60, stream=True)
+
+            response = requests.post(url, headers=headers, json=payload, timeout=120, stream=True)  # Increased timeout
 
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
@@ -777,25 +803,26 @@ class APIWorker(QThread):
                 self.finished.emit("", error_msg, "", 0, 0)
                 return
 
-            self.progress.emit("üîß Processing response...", 80)
+            self.progress.emit("üì• Processing response...", 80)
+
+            # Read the COMPLETE response
             response_text = response.text
-            logging.info(f"Received response of length: {len(response_text)}")
+            logging.info(f"Received COMPLETE response of length: {len(response_text)} characters")
 
             # Parse the response to extract actual text content
             parsed_response = self.parse_response(response_text)
+
+            logging.info(f"Final parsed response length: {len(parsed_response)} characters")
 
             # Calculate approximate token counts
             input_tokens = len(self.prompt) // 4
             output_tokens = len(parsed_response) // 4
 
-            # Log what we're returning
-            logging.info(f"Returning parsed response of length: {len(parsed_response)}")
-
-            self.progress.emit("‚úì Complete!", 100)
+            self.progress.emit("‚úÖ Complete!", 100)
             self.finished.emit(parsed_response, "", response_text, input_tokens, output_tokens)
 
         except Exception as e:
-            logging.error(f"Error in API worker: {e}")
+            logging.error(f"Error in API worker: {e}", exc_info=True)
             self.finished.emit("", str(e), "", 0, 0)
 
 class QueryTab(QWidget):
@@ -842,7 +869,7 @@ class QueryTab(QWidget):
         header_layout.setSpacing(8)
 
         # Execute and Stop buttons
-        self.generate_btn = AnimatedButton("üì§ Execute", primary=True)
+        self.generate_btn = AnimatedButton("üì° Execute", primary=True)
         self.generate_btn.clicked.connect(self.generate_response)
         header_layout.addWidget(self.generate_btn)
 
@@ -956,8 +983,8 @@ class QueryTab(QWidget):
         self.copy_output_btn.clicked.connect(self.copy_output)
         self.copy_output_btn.setEnabled(False)
 
-        # Copy Query and Clear buttons - Updated label here
-        self.copy_btn = AnimatedButton("Copy Query")  # Changed from "Copy" to "Copy Query"
+        # Copy Query and Clear buttons
+        self.copy_btn = AnimatedButton("Copy Query")
         self.copy_btn.clicked.connect(self.copy_response)
 
         self.clear_btn = AnimatedButton("Clear")
@@ -1019,7 +1046,7 @@ class QueryTab(QWidget):
 
         # Response header
         response_header = QHBoxLayout()
-        response_label = QLabel("üí¨ Response")
+        response_label = QLabel("üì® Response")
         response_label.setFont(font_manager.get_font("subheading"))
         response_label.setStyleSheet(f"color: {COLORS['text_primary']}; font-weight: 600;")
 
@@ -1063,6 +1090,10 @@ class QueryTab(QWidget):
         self.response_edit.setReadOnly(True)
         self.response_edit.setPlaceholderText("Response will appear here...")
         self.response_edit.setFont(font_manager.get_font("mono"))
+
+        # Enable line wrapping
+        self.response_edit.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+
         self.update_response_style()
 
         # Store the parsed response separately
@@ -1580,6 +1611,8 @@ class QueryTab(QWidget):
             self.raw_response = raw_response
             self.parsed_response = response
 
+            logging.info(f"Displaying response: {len(response)} characters")
+
             # Enable save and copy buttons
             self.save_btn.setEnabled(True)
             self.copy_output_btn.setEnabled(True)
@@ -1588,7 +1621,12 @@ class QueryTab(QWidget):
             if self.show_raw_json_checkbox.isChecked():
                 self.toggle_response_format()
             else:
+                # Set the COMPLETE parsed response
                 self.response_edit.setPlainText(response)
+
+                # Force the text edit to update and show all content
+                self.response_edit.document().setModified(False)
+                self.response_edit.viewport().update()
 
             # Update output counts
             self.update_output_counts(response)
@@ -1606,7 +1644,7 @@ class QueryTab(QWidget):
                 else:
                     price_text = f"${total_cost:.2f}"
 
-                self.response_info.setText(f"‚úì {elapsed:.1f}s | {price_text} USD*")
+                self.response_info.setText(f"‚úÖ {elapsed:.1f}s | {price_text} USD*")
                 self.response_info.setToolTip(
                     f"Query completed in {elapsed:.1f} seconds\n"
                     f"Input: {input_tokens:,} tokens √ó ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
@@ -1615,14 +1653,15 @@ class QueryTab(QWidget):
                     f"*Fictional pricing for demonstration only"
                 )
             else:
-                self.response_info.setText(f"‚úì {elapsed:.1f}s")
+                self.response_info.setText(f"‚úÖ {elapsed:.1f}s")
 
             # Ensure the response is visible by scrolling to top
             cursor = self.response_edit.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.Start)
             self.response_edit.setTextCursor(cursor)
+            self.response_edit.ensureCursorVisible()
 
-            self.show_message("Query executed successfully!", "success")
+            self.show_message(f"Query executed successfully! ({len(response):,} chars)", "success")
 
     def clear_all(self):
         """Clear all fields"""
@@ -1651,7 +1690,7 @@ class QueryTab(QWidget):
         self.status_label.setVisible(True)
 
         if msg_type == "success":
-            icon = "‚úì"
+            icon = "‚úÖ"
             bg_color = COLORS['success_bg']
             text_color = "#065F46" if not theme_manager.is_dark_mode else "#A7F3D0"
         elif msg_type == "error":
@@ -1694,7 +1733,7 @@ class MainWindow(QMainWindow):
         """Authenticate with Google Cloud"""
         try:
             self.credentials, project = default()
-            logging.info(f"‚úì Authenticated with credentials for project: {project}")
+            logging.info(f"‚úÖ Authenticated with credentials for project: {project}")
         except Exception as e:
             logging.error(f"‚ùå Authentication failed: {e}")
             QMessageBox.critical(None, "Authentication Error",
