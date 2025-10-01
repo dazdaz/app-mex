@@ -39,7 +39,7 @@ logging.basicConfig(
     ]
 )
 
-# --- MODEL CONFIGURATION WITH PRICING ---
+# --- MODEL CONFIGURATION WITH PRICING AND 1M CONTEXT WINDOW ---
 AVAILABLE_MODELS = {
     "claude-3-7-sonnet": {
         "publisher": "anthropic",
@@ -47,27 +47,32 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 3.7 Sonnet",
         "max_input_tokens": 200000,
         "max_output_tokens": 64000,
-        "icon": "üé≠",
+        "icon": "üöÄ",
         "color": "#FF6B6B",
         "description": "Fast, balanced performance with 200k input / 64k output tokens",
         "pricing": {
             "input": 0.003,
             "output": 0.015
-        }
+        },
+        "supports_1m_context": False
     },
     "claude-sonnet-4-5": {
         "publisher": "anthropic",
         "model_id": "claude-sonnet-4-5@20250929:streamRawPredict",
         "display_name": "Claude 4.5 Sonnet",
-        "max_input_tokens": 200000,
+        "max_input_tokens": 200000,  # Default, can be extended to 1M
         "max_output_tokens": 64000,
-        "icon": "üé™",
+        "max_input_tokens_extended": 1000000,  # 1M context window
+        "icon": "‚ö°",
         "color": "#9333EA",
-        "description": "Latest Sonnet model with enhanced capabilities",
+        "description": "Latest Sonnet model with enhanced capabilities (supports 1M context)",
         "pricing": {
             "input": 0.003,
-            "output": 0.015
-        }
+            "output": 0.015,
+            "input_premium": 0.006,  # 2x for >200K tokens
+            "output_premium": 0.0225  # 1.5x for >200K tokens
+        },
+        "supports_1m_context": True
     },
     "claude-opus-4-1": {
         "publisher": "anthropic",
@@ -75,13 +80,14 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 4.1 Opus",
         "max_input_tokens": 200000,
         "max_output_tokens": 32000,
-        "icon": "üëë",
+        "icon": "üíé",
         "color": "#C92A2A",
         "description": "Most capable model with 200k input / 32k output tokens",
         "pricing": {
             "input": 0.015,
             "output": 0.075
-        }
+        },
+        "supports_1m_context": False
     },
     "gemini-2-5-pro": {
         "publisher": "google",
@@ -89,13 +95,14 @@ AVAILABLE_MODELS = {
         "display_name": "Gemini 2.5 Pro",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65536,
-        "icon": "üíé",
+        "icon": "üåü",
         "color": "#4DABF7",
         "description": "Advanced multimodal with 1M+ input / 65k output tokens",
         "pricing": {
             "input": 0.0025,
             "output": 0.01
-        }
+        },
+        "supports_1m_context": False
     },
     "gemini-2-5-flash": {
         "publisher": "google",
@@ -109,7 +116,8 @@ AVAILABLE_MODELS = {
         "pricing": {
             "input": 0.00025,
             "output": 0.001
-        }
+        },
+        "supports_1m_context": False
     }
 }
 
@@ -218,7 +226,7 @@ class AboutDialog(QDialog):
         layout.addWidget(title_label)
 
         # Version info
-        version_label = QLabel("Version 1.1.0")
+        version_label = QLabel("Version 1.2.0")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet(f"color: {COLORS['text_secondary']}; margin-bottom: 20px;")
         layout.addWidget(version_label)
@@ -276,9 +284,21 @@ class AboutDialog(QDialog):
             shown are estimates. The actual usage may differ by ¬±10-20%.</p>
         </div>
 
+        <h3>1M Context Window Support</h3>
+        <div class="info">
+            <p><b>Claude Sonnet 4.5</b> now supports up to 1 million tokens in the context window!</p>
+            <ul>
+                <li>Enable via the "Use 1M Context" checkbox</li>
+                <li>Shared between input and output tokens</li>
+                <li>Premium pricing applies for tokens >200K (2x input, 1.5x output)</li>
+                <li>Beta feature - subject to change</li>
+            </ul>
+        </div>
+
         <h3>Features</h3>
         <ul>
             <li>Support for multiple AI models (Claude 3.7, 4.5, 4.1, Gemini 2.5)</li>
+            <li>1M token context window for Claude Sonnet 4.5</li>
             <li>Real-time character and token counting</li>
             <li>Multiple query tabs with optional synchronization</li>
             <li>Dark/Light mode toggle</li>
@@ -293,7 +313,7 @@ class AboutDialog(QDialog):
         <h3>Model Token Limits</h3>
         <ul>
             <li><b>Claude 3.7 Sonnet:</b> 200k input / 64k output tokens</li>
-            <li><b>Claude 4.5 Sonnet:</b> 200k input / 64k output tokens</li>
+            <li><b>Claude 4.5 Sonnet:</b> 200k input / 64k output tokens (1M with beta)</li>
             <li><b>Claude 4.1 Opus:</b> 200k input / 32k output tokens</li>
             <li><b>Gemini 2.5 Pro:</b> 1M+ input / 65k output tokens</li>
             <li><b>Gemini 2.5 Flash:</b> 1M+ input / 65k output tokens</li>
@@ -596,11 +616,12 @@ class APIWorker(QThread):
     finished = pyqtSignal(str, str, str, int, int)  # response, error, raw_response, input_tokens, output_tokens
     progress = pyqtSignal(str, int)  # message, percentage
 
-    def __init__(self, model_config, prompt, credentials):
+    def __init__(self, model_config, prompt, credentials, use_1m_context=False):
         super().__init__()
         self.model_config = model_config
         self.prompt = prompt
         self.credentials = credentials
+        self.use_1m_context = use_1m_context
         self._is_cancelled = False
 
     def cancel(self):
@@ -615,10 +636,21 @@ class APIWorker(QThread):
     def build_request_payload(self):
         """Build the appropriate request payload based on the model publisher."""
         if self.model_config["publisher"] == "anthropic":
+            # Determine max_tokens based on 1M context window usage
+            if self.use_1m_context and self.model_config.get("supports_1m_context"):
+                # When using 1M context, we need to be more conservative with output tokens
+                # to ensure input + output doesn't exceed 1M total
+                max_output = min(
+                    self.model_config["max_output_tokens"],
+                    1000000 - (len(self.prompt) // 4)  # Approximate input tokens
+                )
+            else:
+                max_output = self.model_config["max_output_tokens"]
+
             return {
                 "anthropic_version": "vertex-2023-10-16",
                 "messages": [{"role": "user", "content": self.prompt}],
-                "max_tokens": self.model_config["max_output_tokens"],  # Use full output token limit
+                "max_tokens": max(1024, max_output),  # Ensure at least 1024 tokens
                 "stream": True
             }
         elif self.model_config["publisher"] == "google":
@@ -628,7 +660,7 @@ class APIWorker(QThread):
                     "parts": [{"text": self.prompt}]
                 }],
                 "generationConfig": {
-                    "maxOutputTokens": self.model_config["max_output_tokens"]  # Use full output token limit
+                    "maxOutputTokens": self.model_config["max_output_tokens"]
                 }
             }
         else:
@@ -783,15 +815,21 @@ class APIWorker(QThread):
                 "Content-Type": "application/json; charset=utf-8"
             }
 
+            # Add beta header for 1M context window if enabled
+            if self.use_1m_context and self.model_config.get("supports_1m_context"):
+                headers["anthropic-beta"] = "context-1m-2025-08-07"
+                logging.info("Using 1M context window beta feature")
+
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            self.progress.emit("üì° Sending request...", 50)
+            self.progress.emit("üåê Sending request...", 50)
             logging.info(f"Sending request to: {url}")
+            logging.info(f"Headers: {headers}")
             logging.info(f"Payload: {json.dumps(payload, indent=2)}")
 
-            response = requests.post(url, headers=headers, json=payload, timeout=120, stream=True)  # Increased timeout
+            response = requests.post(url, headers=headers, json=payload, timeout=120, stream=True)
 
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
@@ -803,7 +841,7 @@ class APIWorker(QThread):
                 self.finished.emit("", error_msg, "", 0, 0)
                 return
 
-            self.progress.emit("üì• Processing response...", 80)
+            self.progress.emit("üìù Processing response...", 80)
 
             # Read the COMPLETE response
             response_text = response.text
@@ -869,7 +907,7 @@ class QueryTab(QWidget):
         header_layout.setSpacing(8)
 
         # Execute and Stop buttons
-        self.generate_btn = AnimatedButton("üì° Execute", primary=True)
+        self.generate_btn = AnimatedButton("üåê Execute", primary=True)
         self.generate_btn.clicked.connect(self.generate_response)
         header_layout.addWidget(self.generate_btn)
 
@@ -916,6 +954,38 @@ class QueryTab(QWidget):
 
         header_layout.addWidget(self.model_combo)
         header_layout.addWidget(self.model_info)
+
+        # 1M Context checkbox (only visible for supported models)
+        self.use_1m_context_checkbox = QCheckBox("Use 1M Context")
+        self.use_1m_context_checkbox.setChecked(False)
+        self.use_1m_context_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {COLORS['primary']};
+                font-size: {font_manager.base_size - 2}px;
+                font-weight: 600;
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border-radius: 3px;
+                border: 1px solid {COLORS['border']};
+                background-color: {COLORS['surface']};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {COLORS['primary']};
+                border-color: {COLORS['primary']};
+            }}
+        """)
+        self.use_1m_context_checkbox.setToolTip(
+            "Enable 1 million token context window (beta)\n"
+            "‚Ä¢ Shared between input and output\n"
+            "‚Ä¢ Premium pricing: 2x input, 1.5x output for tokens >200K\n"
+            "‚Ä¢ Only available for Claude Sonnet 4.5"
+        )
+        self.use_1m_context_checkbox.stateChanged.connect(self.update_model_info)
+        self.use_1m_context_checkbox.stateChanged.connect(self.update_pricing_estimate)
+        header_layout.addWidget(self.use_1m_context_checkbox)
+
         header_layout.addStretch()
 
         # Pricing label
@@ -1046,7 +1116,7 @@ class QueryTab(QWidget):
 
         # Response header
         response_header = QHBoxLayout()
-        response_label = QLabel("üì® Response")
+        response_label = QLabel("üìÑ Response")
         response_label.setFont(font_manager.get_font("subheading"))
         response_label.setStyleSheet(f"color: {COLORS['text_primary']}; font-weight: 600;")
 
@@ -1146,9 +1216,28 @@ class QueryTab(QWidget):
         # Get pricing info
         pricing = self.current_model_config.get("pricing", {"input": 0.001, "output": 0.002})
 
-        # Calculate costs in USD
-        input_cost = (input_tokens / 1000) * pricing["input"]
-        output_cost = (estimated_output_tokens / 1000) * pricing["output"]
+        # Check if using 1M context and if tokens exceed 200K
+        use_1m = self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context")
+        total_tokens = input_tokens + estimated_output_tokens
+
+        if use_1m and total_tokens > 200000:
+            # Premium pricing for tokens over 200K
+            base_input_tokens = min(input_tokens, 200000)
+            premium_input_tokens = max(0, input_tokens - 200000)
+
+            base_output_tokens = min(estimated_output_tokens, 200000 - base_input_tokens)
+            premium_output_tokens = estimated_output_tokens - base_output_tokens
+
+            input_cost = (base_input_tokens / 1000) * pricing["input"]
+            input_cost += (premium_input_tokens / 1000) * pricing.get("input_premium", pricing["input"] * 2)
+
+            output_cost = (base_output_tokens / 1000) * pricing["output"]
+            output_cost += (premium_output_tokens / 1000) * pricing.get("output_premium", pricing["output"] * 1.5)
+        else:
+            # Standard pricing
+            input_cost = (input_tokens / 1000) * pricing["input"]
+            output_cost = (estimated_output_tokens / 1000) * pricing["output"]
+
         total_cost = input_cost + output_cost
 
         # Format price display
@@ -1159,14 +1248,26 @@ class QueryTab(QWidget):
         else:
             price_text = f"${total_cost:.2f}"
 
-        self.pricing_label.setText(f"üí∞ ~{price_text} USD*")
-        self.pricing_label.setToolTip(
+        premium_note = " (Premium)" if use_1m and total_tokens > 200000 else ""
+        self.pricing_label.setText(f"üí∞ ~{price_text} USD*{premium_note}")
+
+        tooltip = (
             f"Fictional pricing estimate:\n"
             f"Input: ~{input_tokens:,} tokens √ó ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
             f"Output: ~{estimated_output_tokens:,} tokens √ó ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
             f"Total: ~{price_text} USD\n\n"
-            f"*Prices are fictional and for demonstration only"
         )
+
+        if use_1m and total_tokens > 200000:
+            tooltip += (
+                f"‚ö†Ô∏è Premium pricing applied for tokens >200K:\n"
+                f"Input: 2x base rate\n"
+                f"Output: 1.5x base rate\n\n"
+            )
+
+        tooltip += "*Prices are fictional and for demonstration only"
+
+        self.pricing_label.setToolTip(tooltip)
         self.pricing_label.setVisible(True)
 
     def stop_query(self):
@@ -1252,9 +1353,11 @@ class QueryTab(QWidget):
                     content_to_save = self.parsed_response if self.parsed_response else self.response_edit.toPlainText()
 
                 # Add metadata header
+                use_1m = "Yes" if self.use_1m_context_checkbox.isChecked() else "No"
                 metadata = f"""# Generated by MEX - Model EXplorer
 # Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 # Model: {self.model_combo.currentText()}
+# 1M Context: {use_1m}
 # Query Length: {len(self.prompt_edit.toPlainText())} characters
 # Response Length: {len(content_to_save)} characters
 # Format: {'Raw JSON' if (file_path.endswith('.json') or self.show_raw_json_checkbox.isChecked()) else 'Parsed Text'}
@@ -1294,17 +1397,28 @@ class QueryTab(QWidget):
             config = AVAILABLE_MODELS[model_key]
             self.current_model_config = config
 
+            # Show/hide 1M context checkbox based on model support
+            supports_1m = config.get("supports_1m_context", False)
+            self.use_1m_context_checkbox.setVisible(supports_1m)
+
+            # Determine max input tokens based on 1M context setting
+            if self.use_1m_context_checkbox.isChecked() and supports_1m:
+                max_input = config.get("max_input_tokens_extended", config["max_input_tokens"])
+            else:
+                max_input = config["max_input_tokens"]
+
             # Format the token display
-            input_display = self.format_token_display(config['max_input_tokens'])
+            input_display = self.format_token_display(max_input)
             output_display = self.format_token_display(config['max_output_tokens'])
 
             # Update the label to show input/output limits
-            self.model_info.setText(f"{input_display}/{output_display} tokens")
+            context_note = " (1M)" if self.use_1m_context_checkbox.isChecked() and supports_1m else ""
+            self.model_info.setText(f"{input_display}/{output_display} tokens{context_note}")
 
             # Calculate approximate words and characters
-            input_words = int(config['max_input_tokens'] * 0.75)
+            input_words = int(max_input * 0.75)
             output_words = int(config['max_output_tokens'] * 0.75)
-            input_chars = config['max_input_tokens'] * 4  # Approximately 4 chars per token
+            input_chars = max_input * 4  # Approximately 4 chars per token
             output_chars = config['max_output_tokens'] * 4
 
             # Get pricing info
@@ -1313,16 +1427,27 @@ class QueryTab(QWidget):
             # Set detailed tooltip
             tooltip_text = f"""
             <b>{config['display_name']}</b><br><br>
-            <b>Input Token Limit:</b> {config['max_input_tokens']:,} tokens<br>
+            <b>Input Token Limit:</b> {max_input:,} tokens<br>
             ‚âà {input_words:,} words or ~{input_chars:,} characters<br><br>
             <b>Output Token Limit:</b> {config['max_output_tokens']:,} tokens<br>
             ‚âà {output_words:,} words or ~{output_chars:,} characters<br><br>
             <b>Fictional Pricing:</b><br>
             Input: ${pricing['input']:.3f} per 1K tokens<br>
-            Output: ${pricing['output']:.3f} per 1K tokens<br><br>
-            <b>Description:</b> {config.get('description', 'General purpose model')}<br><br>
+            Output: ${pricing['output']:.3f} per 1K tokens<br>
+            """
+
+            if supports_1m and self.use_1m_context_checkbox.isChecked():
+                tooltip_text += f"""
+            <br><b>Premium Pricing (>200K tokens):</b><br>
+            Input: ${pricing.get('input_premium', pricing['input'] * 2):.3f} per 1K tokens<br>
+            Output: ${pricing.get('output_premium', pricing['output'] * 1.5):.3f} per 1K tokens<br>
+                """
+
+            tooltip_text += f"""
+            <br><b>Description:</b> {config.get('description', 'General purpose model')}<br><br>
             <i>Note: All pricing is fictional. Actual costs will vary.</i>
             """
+
             self.model_info.setToolTip(tooltip_text)
 
             # Update char count display to reflect current model's limit
@@ -1341,7 +1466,11 @@ class QueryTab(QWidget):
 
         # Get current model's max input tokens
         if self.current_model_config:
-            max_tokens = self.current_model_config['max_input_tokens']
+            # Check if using 1M context
+            if self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context"):
+                max_tokens = self.current_model_config.get("max_input_tokens_extended", self.current_model_config['max_input_tokens'])
+            else:
+                max_tokens = self.current_model_config['max_input_tokens']
 
             # Calculate percentage based on token approximation
             percentage = (approx_tokens / max_tokens) * 100 if max_tokens > 0 else 0
@@ -1558,13 +1687,22 @@ class QueryTab(QWidget):
 
         # Check against model's input limit
         if self.current_model_config:
-            max_chars = self.current_model_config['max_input_tokens'] * 4
+            # Determine max tokens based on 1M context usage
+            if self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context"):
+                max_tokens = self.current_model_config.get("max_input_tokens_extended", self.current_model_config['max_input_tokens'])
+            else:
+                max_tokens = self.current_model_config['max_input_tokens']
+
+            max_chars = max_tokens * 4
             if len(prompt) > max_chars:
                 self.show_message(f"Query exceeds maximum of {max_chars:,} characters for this model", "error")
                 return
 
         model_key = self.model_combo.currentData()
         model_config = AVAILABLE_MODELS[model_key]
+
+        # Get 1M context setting
+        use_1m_context = self.use_1m_context_checkbox.isChecked() and model_config.get("supports_1m_context", False)
 
         # Start timing
         self.query_timer.start()
@@ -1583,7 +1721,7 @@ class QueryTab(QWidget):
         self.output_char_count_label.setVisible(False)
         self.output_token_count_label.setVisible(False)
 
-        self.worker = APIWorker(model_config, prompt, self.credentials)
+        self.worker = APIWorker(model_config, prompt, self.credentials, use_1m_context)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_response)
         self.worker.start()
@@ -1634,8 +1772,29 @@ class QueryTab(QWidget):
             # Calculate actual pricing
             if self.current_model_config:
                 pricing = self.current_model_config.get("pricing", {"input": 0.001, "output": 0.002})
-                input_cost = (input_tokens / 1000) * pricing["input"]
-                output_cost = (output_tokens / 1000) * pricing["output"]
+
+                # Check if premium pricing applies
+                total_tokens = input_tokens + output_tokens
+                use_1m = self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context")
+
+                if use_1m and total_tokens > 200000:
+                    # Premium pricing
+                    base_input = min(input_tokens, 200000)
+                    premium_input = max(0, input_tokens - 200000)
+
+                    base_output = min(output_tokens, 200000 - base_input)
+                    premium_output = max(0, output_tokens - base_output)
+
+                    input_cost = (base_input / 1000) * pricing["input"]
+                    input_cost += (premium_input / 1000) * pricing.get("input_premium", pricing["input"] * 2)
+
+                    output_cost = (base_output / 1000) * pricing["output"]
+                    output_cost += (premium_output / 1000) * pricing.get("output_premium", pricing["output"] * 1.5)
+                else:
+                    # Standard pricing
+                    input_cost = (input_tokens / 1000) * pricing["input"]
+                    output_cost = (output_tokens / 1000) * pricing["output"]
+
                 total_cost = input_cost + output_cost
 
                 # Format price
@@ -1644,14 +1803,22 @@ class QueryTab(QWidget):
                 else:
                     price_text = f"${total_cost:.2f}"
 
-                self.response_info.setText(f"‚úÖ {elapsed:.1f}s | {price_text} USD*")
-                self.response_info.setToolTip(
+                premium_note = " (Premium)" if use_1m and total_tokens > 200000 else ""
+                self.response_info.setText(f"‚úÖ {elapsed:.1f}s | {price_text} USD*{premium_note}")
+
+                tooltip = (
                     f"Query completed in {elapsed:.1f} seconds\n"
                     f"Input: {input_tokens:,} tokens √ó ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
                     f"Output: {output_tokens:,} tokens √ó ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
-                    f"Total: {price_text} USD\n\n"
-                    f"*Fictional pricing for demonstration only"
+                    f"Total: {price_text} USD\n"
                 )
+
+                if use_1m and total_tokens > 200000:
+                    tooltip += "\n‚ö†Ô∏è Premium pricing applied for tokens >200K\n"
+
+                tooltip += "\n*Fictional pricing for demonstration only"
+
+                self.response_info.setToolTip(tooltip)
             else:
                 self.response_info.setText(f"‚úÖ {elapsed:.1f}s")
 
@@ -1779,7 +1946,7 @@ class MainWindow(QMainWindow):
         app_title.setStyleSheet(f"color: {COLORS['text_primary']}; margin: 0 20px;")
 
         # Add project badge
-        project_badge = QLabel(f"üîë {PROJECT_ID}")
+        project_badge = QLabel(f"üîß {PROJECT_ID}")
         project_badge.setStyleSheet(f"""
             color: {COLORS['primary']};
             font-size: {font_manager.base_size - 1}px;
