@@ -39,21 +39,58 @@ logging.basicConfig(
     ]
 )
 
-# --- MODEL CONFIGURATION WITH PRICING ---
+# --- MODEL CONFIGURATION WITH PRICING AND 1M CONTEXT WINDOW ---
 AVAILABLE_MODELS = {
+    "claude-haiku-4-5": {
+        "publisher": "anthropic",
+        "model_id": "claude-haiku-4-5@20251001:streamRawPredict",
+        "display_name": "Claude 4.5 Haiku",
+        "max_input_tokens": 200000,
+        "max_output_tokens": 8192,
+        "icon": "⚡",
+        "color": "#10B981",
+        "description": "Fast and efficient with 200k input / 8k output tokens",
+        "pricing": {
+            "input": 0.001,
+            "output": 0.005
+        },
+        "supports_1m_context": False,
+        "supports_memory": False
+    },
     "claude-3-7-sonnet": {
         "publisher": "anthropic",
         "model_id": "claude-3-7-sonnet@20250219:streamRawPredict",
         "display_name": "Claude 3.7 Sonnet",
         "max_input_tokens": 200000,
         "max_output_tokens": 64000,
-        "icon": "🎭",
+        "icon": "🔷",
         "color": "#FF6B6B",
         "description": "Fast, balanced performance with 200k input / 64k output tokens",
         "pricing": {
-            "input": 0.003,  # $0.003 per 1K tokens
-            "output": 0.015  # $0.015 per 1K tokens
-        }
+            "input": 0.003,
+            "output": 0.015
+        },
+        "supports_1m_context": False,
+        "supports_memory": False
+    },
+    "claude-sonnet-4-5": {
+        "publisher": "anthropic",
+        "model_id": "claude-sonnet-4-5@20250929:streamRawPredict",
+        "display_name": "Claude 4.5 Sonnet",
+        "max_input_tokens": 200000,  # Default, can be extended to 1M
+        "max_output_tokens": 64000,
+        "max_input_tokens_extended": 1000000,  # 1M context window
+        "icon": "🚀",
+        "color": "#9333EA",
+        "description": "Latest Sonnet model with enhanced capabilities (supports 1M context + memory)",
+        "pricing": {
+            "input": 0.003,
+            "output": 0.015,
+            "input_premium": 0.006,  # 2x for >200K tokens
+            "output_premium": 0.0225  # 1.5x for >200K tokens
+        },
+        "supports_1m_context": True,
+        "supports_memory": True  # Memory tool support
     },
     "claude-opus-4-1": {
         "publisher": "anthropic",
@@ -61,13 +98,15 @@ AVAILABLE_MODELS = {
         "display_name": "Claude 4.1 Opus",
         "max_input_tokens": 200000,
         "max_output_tokens": 32000,
-        "icon": "🎨",
+        "icon": "👑",
         "color": "#C92A2A",
         "description": "Most capable model with 200k input / 32k output tokens",
         "pricing": {
-            "input": 0.015,  # $0.015 per 1K tokens
-            "output": 0.075  # $0.075 per 1K tokens
-        }
+            "input": 0.015,
+            "output": 0.075
+        },
+        "supports_1m_context": False,
+        "supports_memory": False
     },
     "gemini-2-5-pro": {
         "publisher": "google",
@@ -75,13 +114,15 @@ AVAILABLE_MODELS = {
         "display_name": "Gemini 2.5 Pro",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65536,
-        "icon": "💎",
+        "icon": "🎯",
         "color": "#4DABF7",
         "description": "Advanced multimodal with 1M+ input / 65k output tokens",
         "pricing": {
-            "input": 0.0025,  # $0.0025 per 1K tokens
-            "output": 0.01   # $0.01 per 1K tokens
-        }
+            "input": 0.0025,
+            "output": 0.01
+        },
+        "supports_1m_context": False,
+        "supports_memory": False
     },
     "gemini-2-5-flash": {
         "publisher": "google",
@@ -93,9 +134,11 @@ AVAILABLE_MODELS = {
         "color": "#69DB7C",
         "description": "Fastest response with 1M+ input / 65k output tokens",
         "pricing": {
-            "input": 0.00025,  # $0.00025 per 1K tokens
-            "output": 0.001    # $0.001 per 1K tokens
-        }
+            "input": 0.00025,
+            "output": 0.001
+        },
+        "supports_1m_context": False,
+        "supports_memory": False
     }
 }
 
@@ -204,7 +247,7 @@ class AboutDialog(QDialog):
         layout.addWidget(title_label)
 
         # Version info
-        version_label = QLabel("Version 1.0.0")
+        version_label = QLabel("Version 1.3.1 - Memory Support Edition")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet(f"color: {COLORS['text_secondary']}; margin-bottom: 20px;")
         layout.addWidget(version_label)
@@ -245,6 +288,17 @@ class AboutDialog(QDialog):
         <p>MEX (Model EXplorer) is a powerful desktop interface for Google Cloud's Vertex AI,
         providing easy access to multiple AI models including Claude and Gemini.</p>
 
+        <h3>🧠 NEW: Memory Tool Support</h3>
+        <div class="info">
+            <p><b>Claude Sonnet 4.5 now includes memory capabilities!</b></p>
+            <ul>
+                <li>✅ Disabled by default - enable via checkbox</li>
+                <li>🔧 Toggle memory tool in the query interface</li>
+                <li>💡 AI can remember context across conversations</li>
+                <li>📚 Improves responses with persistent knowledge</li>
+            </ul>
+        </div>
+
         <h3>Token & Character Counting</h3>
         <div class="info">
             <p><b>Approximations used in MEX:</b></p>
@@ -264,7 +318,10 @@ class AboutDialog(QDialog):
 
         <h3>Features</h3>
         <ul>
-            <li>Support for multiple AI models (Claude 3.7, Claude 4.1, Gemini 2.5)</li>
+            <li>🧠 Memory tool support for Claude Sonnet 4.5 (disabled by default)</li>
+            <li>Support for multiple AI models (Claude Haiku 4.5, 3.7, Sonnet 4.5, Opus 4.1, Gemini 2.5)</li>
+            <li>1M token context window for Claude Sonnet 4.5</li>
+            <li>📁 Create project structure from AI responses</li>
             <li>Real-time character and token counting</li>
             <li>Multiple query tabs with optional synchronization</li>
             <li>Dark/Light mode toggle</li>
@@ -276,13 +333,17 @@ class AboutDialog(QDialog):
             <li>Fictional pricing estimates</li>
         </ul>
 
-        <h3>Model Token Limits</h3>
-        <ul>
-            <li><b>Claude 3.7 Sonnet:</b> 200k input / 64k output tokens</li>
-            <li><b>Claude 4.1 Opus:</b> 200k input / 32k output tokens</li>
-            <li><b>Gemini 2.5 Pro:</b> 1M+ input / 65k output tokens</li>
-            <li><b>Gemini 2.5 Flash:</b> 1M+ input / 65k output tokens</li>
-        </ul>
+        <h3>Memory Tool</h3>
+        <div class="info">
+            <p>The memory tool allows Claude to:</p>
+            <ul>
+                <li>Store information across conversations</li>
+                <li>Learn from past interactions</li>
+                <li>Build context over time</li>
+                <li>Provide more personalized responses</li>
+            </ul>
+            <p><b>Note:</b> Memory is model-specific and conversation-scoped.</p>
+        </div>
 
         <h3>Keyboard Shortcuts</h3>
         <ul>
@@ -581,11 +642,13 @@ class APIWorker(QThread):
     finished = pyqtSignal(str, str, str, int, int)  # response, error, raw_response, input_tokens, output_tokens
     progress = pyqtSignal(str, int)  # message, percentage
 
-    def __init__(self, model_config, prompt, credentials):
+    def __init__(self, model_config, prompt, credentials, use_1m_context=False, use_memory=False):
         super().__init__()
         self.model_config = model_config
         self.prompt = prompt
         self.credentials = credentials
+        self.use_1m_context = use_1m_context
+        self.use_memory = use_memory
         self._is_cancelled = False
 
     def cancel(self):
@@ -600,44 +663,101 @@ class APIWorker(QThread):
     def build_request_payload(self):
         """Build the appropriate request payload based on the model publisher."""
         if self.model_config["publisher"] == "anthropic":
-            return {
+            # Determine max_tokens based on 1M context window usage
+            if self.use_1m_context and self.model_config.get("supports_1m_context"):
+                # When using 1M context, we need to be more conservative with output tokens
+                # to ensure input + output doesn't exceed 1M total
+                max_output = min(
+                    self.model_config["max_output_tokens"],
+                    1000000 - (len(self.prompt) // 4)  # Approximate input tokens
+                )
+            else:
+                max_output = self.model_config["max_output_tokens"]
+
+            payload = {
                 "anthropic_version": "vertex-2023-10-16",
                 "messages": [{"role": "user", "content": self.prompt}],
-                "max_tokens": self.model_config["max_output_tokens"],
+                "max_tokens": max(1024, max_output),  # Ensure at least 1024 tokens
                 "stream": True
             }
+            
+            # Add memory tool if enabled and supported
+            if self.use_memory and self.model_config.get("supports_memory"):
+                payload["tools"] = [{
+                    "type": "memory_20250818",
+                    "name": "memory"
+                }]
+            
+            return payload
+            
         elif self.model_config["publisher"] == "google":
             return {
                 "contents": [{
                     "role": "user",
                     "parts": [{"text": self.prompt}]
-                }]
+                }],
+                "generationConfig": {
+                    "maxOutputTokens": self.model_config["max_output_tokens"]
+                }
             }
         else:
             raise ValueError(f"Unknown publisher: {self.model_config['publisher']}")
 
     def parse_anthropic_stream(self, response_text):
-        """Parse Anthropic's Server-Sent Events streaming format."""
+        """Parse Anthropic's Server-Sent Events streaming format - handles text AND tool_use blocks."""
         full_text = ""
-        for line in response_text.split('\n'):
+        lines = response_text.split('\n')
+
+        logging.info(f"Parsing Anthropic stream with {len(lines)} lines")
+
+        for line in lines:
             if line.startswith('data: '):
                 try:
                     data_str = line[6:].strip()
                     if data_str and data_str != '[DONE]':
                         data = json.loads(data_str)
+
+                        # Handle content_block_delta events for TEXT content
                         if data.get("type") == "content_block_delta":
-                            delta_text = data.get("delta", {}).get("text", "")
-                            full_text += delta_text
-                except json.JSONDecodeError:
+                            delta = data.get("delta", {})
+                            
+                            # Text content
+                            if delta.get("type") == "text_delta":
+                                delta_text = delta.get("text", "")
+                                full_text += delta_text
+                            
+                            # Tool use content (input_json_delta) - skip these
+                            elif delta.get("type") == "input_json_delta":
+                                logging.debug(f"Skipping tool_use input_json_delta: {delta.get('partial_json', '')}")
+                                continue
+
+                        # Handle content_block_start events (initial content) - only for text blocks
+                        elif data.get("type") == "content_block_start":
+                            content_block = data.get("content_block", {})
+                            
+                            # Only process text blocks, skip tool_use blocks
+                            if content_block.get("type") == "text":
+                                block_text = content_block.get("text", "")
+                                full_text += block_text
+                            elif content_block.get("type") == "tool_use":
+                                logging.debug(f"Skipping tool_use block: {content_block.get('name', 'unknown')}")
+                                continue
+
+                except json.JSONDecodeError as e:
+                    logging.warning(f"Failed to parse line as JSON: {line[:100]}")
                     continue
+
+        logging.info(f"Parsed Anthropic response length: {len(full_text)} characters")
         return full_text
 
     def parse_google_stream(self, response_text):
-        """Parse Google's streaming format - handle newline-delimited JSON."""
+        """Parse Google's streaming format - COMPLETE response."""
         full_text = ""
 
         # Split by lines and filter out empty lines and commas
         lines = [line.strip() for line in response_text.split('\n') if line.strip() and line.strip() != ',']
+
+        logging.info(f"Parsing Google stream with {len(lines)} valid lines")
 
         # Handle array format: [obj1, obj2, obj3]
         if response_text.strip().startswith('['):
@@ -652,6 +772,7 @@ class APIWorker(QThread):
                         if parts:
                             text = parts[0].get("text", "")
                             full_text += text
+                logging.info(f"Parsed Google array response length: {len(full_text)} characters")
                 return full_text
             except json.JSONDecodeError:
                 pass
@@ -678,34 +799,44 @@ class APIWorker(QThread):
             except json.JSONDecodeError:
                 continue
 
+        logging.info(f"Parsed Google response length: {len(full_text)} characters")
         return full_text
 
     def parse_response(self, response_text, response_data=None):
-        """Parse the response based on the model publisher and format."""
+        """Parse the response based on the model publisher and format - COMPLETE response."""
         try:
             if self.model_config["publisher"] == "anthropic":
                 # First try streaming format
                 if "data:" in response_text:
                     parsed = self.parse_anthropic_stream(response_text)
                     if parsed:
+                        logging.info(f"Successfully parsed Anthropic streaming response: {len(parsed)} chars")
                         return parsed
 
                 # Then try non-streaming JSON format
                 elif response_data and isinstance(response_data, dict):
                     if "content" in response_data:
                         if isinstance(response_data["content"], list) and len(response_data["content"]) > 0:
-                            return response_data["content"][0].get("text", "")
+                            # Filter out tool_use blocks, only get text blocks
+                            text_content = ""
+                            for block in response_data["content"]:
+                                if block.get("type") == "text":
+                                    text_content += block.get("text", "")
+                            return text_content
 
                 # If neither worked, return the raw text
+                logging.warning("Could not parse Anthropic response, returning raw text")
                 return response_text
 
             elif self.model_config["publisher"] == "google":
                 # Parse Google's streaming format
                 parsed = self.parse_google_stream(response_text)
                 if parsed:
+                    logging.info(f"Successfully parsed Google response: {len(parsed)} chars")
                     return parsed
 
                 # If parsing failed, return raw text
+                logging.warning("Could not parse Google response, returning raw text")
                 return response_text
             else:
                 return response_text
@@ -742,13 +873,33 @@ class APIWorker(QThread):
                 "Content-Type": "application/json; charset=utf-8"
             }
 
+            # Add beta headers
+            beta_headers = []
+            
+            # Add 1M context header if enabled
+            if self.use_1m_context and self.model_config.get("supports_1m_context"):
+                beta_headers.append("context-1m-2025-08-07")
+                logging.info("Using 1M context window beta feature")
+
+            # Add memory header if enabled
+            if self.use_memory and self.model_config.get("supports_memory"):
+                beta_headers.append("context-management-2025-06-27")
+                logging.info("Using memory tool beta feature")
+            
+            # Combine beta headers
+            if beta_headers:
+                headers["anthropic-beta"] = ",".join(beta_headers)
+
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            self.progress.emit("🚀 Sending request...", 50)
+            self.progress.emit("📤 Sending request...", 50)
             logging.info(f"Sending request to: {url}")
-            response = requests.post(url, headers=headers, json=payload, timeout=60, stream=True)
+            logging.info(f"Headers: {headers}")
+            logging.info(f"Payload: {json.dumps(payload, indent=2)}")
+
+            response = requests.post(url, headers=headers, json=payload, timeout=120, stream=True)
 
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
@@ -760,29 +911,30 @@ class APIWorker(QThread):
                 self.finished.emit("", error_msg, "", 0, 0)
                 return
 
-            self.progress.emit("📝 Processing response...", 80)
+            self.progress.emit("💬 Processing response...", 80)
+
+            # Read the COMPLETE response
             response_text = response.text
-            logging.info(f"Received response of length: {len(response_text)}")
+            logging.info(f"Received COMPLETE response of length: {len(response_text)} characters")
 
             # Parse the response to extract actual text content
             parsed_response = self.parse_response(response_text)
+
+            logging.info(f"Final parsed response length: {len(parsed_response)} characters")
 
             # Calculate approximate token counts
             input_tokens = len(self.prompt) // 4
             output_tokens = len(parsed_response) // 4
 
-            # Log what we're returning
-            logging.info(f"Returning parsed response of length: {len(parsed_response)}")
-
             self.progress.emit("✅ Complete!", 100)
             self.finished.emit(parsed_response, "", response_text, input_tokens, output_tokens)
 
         except Exception as e:
-            logging.error(f"Error in API worker: {e}")
+            logging.error(f"Error in API worker: {e}", exc_info=True)
             self.finished.emit("", str(e), "", 0, 0)
 
 class QueryTab(QWidget):
-    """Individual query tab widget with enhanced design"""
+    """Individual query tab widget with enhanced design and memory support"""
     font_size_changed = pyqtSignal(int)  # Signal for font size changes
 
     def __init__(self, tab_name, credentials, parent=None):
@@ -824,13 +976,17 @@ class QueryTab(QWidget):
         header_layout = QHBoxLayout()
         header_layout.setSpacing(8)
 
+        # First row: Execute, Stop, Model selector, and checkboxes
+        first_row = QHBoxLayout()
+        first_row.setSpacing(8)
+
         # Execute and Stop buttons
-        self.generate_btn = AnimatedButton("🚀 Execute", primary=True)
+        self.generate_btn = AnimatedButton("📤 Execute", primary=True)
         self.generate_btn.clicked.connect(self.generate_response)
-        header_layout.addWidget(self.generate_btn)
+        first_row.addWidget(self.generate_btn)
 
         # Stop button (initially hidden)
-        self.stop_btn = AnimatedButton("⏹️ Stop", primary=True)
+        self.stop_btn = AnimatedButton("⏹ Stop", primary=True)
         self.stop_btn.clicked.connect(self.stop_query)
         self.stop_btn.setVisible(False)
         self.stop_btn.setStyleSheet(f"""
@@ -851,61 +1007,89 @@ class QueryTab(QWidget):
                                           stop: 1 {COLORS['danger']});
             }}
         """)
-        header_layout.addWidget(self.stop_btn)
+        first_row.addWidget(self.stop_btn)
 
         self.model_combo = QComboBox()
         self.model_combo.setMinimumWidth(200)
         self.model_combo.setMaximumWidth(250)
         self.update_combo_style()
 
-        # Add models to combo box - Claude Opus 4.1 will be added second
+        # Add models to combo box - Claude 4.5 Sonnet as default
         for key, config in AVAILABLE_MODELS.items():
             self.model_combo.addItem(f"{config['icon']} {config['display_name']}", key)
 
-        # Set Claude Opus 4.1 as default (it's the second item, index 1)
-        self.model_combo.setCurrentIndex(1)
+        # Set Claude 4.5 Sonnet as default (it's the second item after adding Haiku)
+        self.model_combo.setCurrentIndex(2)
 
         # Model info label with tooltip
         self.model_info = QLabel("")
         self.model_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {font_manager.base_size - 2}px;")
         self.model_info.setCursor(Qt.CursorShape.WhatsThisCursor)
 
-        header_layout.addWidget(self.model_combo)
-        header_layout.addWidget(self.model_info)
-        header_layout.addStretch()
+        first_row.addWidget(self.model_combo)
+        first_row.addWidget(self.model_info)
 
-        # Pricing label
-        self.pricing_label = QLabel("")
-        self.pricing_label.setStyleSheet(f"""
-            color: {COLORS['warning']};
-            font-size: {font_manager.base_size - 2}px;
-            padding: 2px 6px;
-            background-color: {COLORS['disclaimer_bg']};
-            border-radius: 3px;
-            font-weight: 600;
+        # 1M Context checkbox (only visible for supported models)
+        self.use_1m_context_checkbox = QCheckBox("1M Context")
+        self.use_1m_context_checkbox.setChecked(False)
+        self.use_1m_context_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {COLORS['primary']};
+                font-size: {font_manager.base_size - 2}px;
+                font-weight: 600;
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border-radius: 3px;
+                border: 1px solid {COLORS['border']};
+                background-color: {COLORS['surface']};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {COLORS['primary']};
+                border-color: {COLORS['primary']};
+            }}
         """)
-        self.pricing_label.setVisible(False)
-        header_layout.addWidget(self.pricing_label)
+        self.use_1m_context_checkbox.setToolTip(
+            "Enable 1 million token context window (beta)\n"
+            "• Shared between input and output\n"
+            "• Premium pricing: 2x input, 1.5x output for tokens >200K\n"
+            "• Only available for Claude Sonnet 4.5"
+        )
+        self.use_1m_context_checkbox.stateChanged.connect(self.update_model_info)
+        self.use_1m_context_checkbox.stateChanged.connect(self.update_pricing_estimate)
+        first_row.addWidget(self.use_1m_context_checkbox)
 
-        # Input character and token count labels
-        self.input_char_count_label = QLabel("Input: 0 chars")
-        self.input_char_count_label.setStyleSheet(f"""
-            color: {COLORS['text_secondary']};
-            font-size: {font_manager.base_size - 2}px;
-            padding: 2px 6px;
-            background-color: {COLORS['background']};
-            border-radius: 3px;
+        # Memory checkbox (only visible for supported models) - DISABLED BY DEFAULT
+        self.use_memory_checkbox = QCheckBox("🧠")
+        self.use_memory_checkbox.setChecked(False)  # DISABLED BY DEFAULT
+        self.use_memory_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {COLORS['secondary']};
+                font-size: {font_manager.base_size - 2}px;
+                font-weight: 600;
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border-radius: 3px;
+                border: 1px solid {COLORS['border']};
+                background-color: {COLORS['surface']};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {COLORS['secondary']};
+                border-color: {COLORS['secondary']};
+            }}
         """)
-
-        self.input_token_count_label = QLabel("~0 tokens")
-        self.input_token_count_label.setStyleSheet(f"""
-            color: {COLORS['primary']};
-            font-size: {font_manager.base_size - 2}px;
-            padding: 2px 6px;
-            background-color: {COLORS['info_bg']};
-            border-radius: 3px;
-            font-weight: 600;
-        """)
+        self.use_memory_checkbox.setToolTip(
+            "Enable memory tool (beta)\n"
+            "• AI can remember context across conversations\n"
+            "• Improves responses with persistent knowledge\n"
+            "• Only available for Claude Sonnet 4.5\n"
+            "• DISABLED BY DEFAULT - check to enable"
+        )
+        self.use_memory_checkbox.stateChanged.connect(self.update_model_info)
+        first_row.addWidget(self.use_memory_checkbox)
 
         # Raw JSON checkbox
         self.show_raw_json_checkbox = QCheckBox("Raw JSON")
@@ -928,6 +1112,49 @@ class QueryTab(QWidget):
             }}
         """)
         self.show_raw_json_checkbox.stateChanged.connect(self.toggle_response_format)
+        first_row.addWidget(self.show_raw_json_checkbox)
+
+        first_row.addStretch()
+
+        # Input character and token count labels
+        self.input_char_count_label = QLabel("Input: 0 chars")
+        self.input_char_count_label.setStyleSheet(f"""
+            color: {COLORS['text_secondary']};
+            font-size: {font_manager.base_size - 2}px;
+            padding: 2px 6px;
+            background-color: {COLORS['background']};
+            border-radius: 3px;
+        """)
+
+        self.input_token_count_label = QLabel("~0 tokens")
+        self.input_token_count_label.setStyleSheet(f"""
+            color: {COLORS['primary']};
+            font-size: {font_manager.base_size - 2}px;
+            padding: 2px 6px;
+            background-color: {COLORS['info_bg']};
+            border-radius: 3px;
+            font-weight: 600;
+        """)
+
+        first_row.addWidget(self.input_char_count_label)
+        first_row.addWidget(self.input_token_count_label)
+
+        # Pricing label
+        self.pricing_label = QLabel("")
+        self.pricing_label.setStyleSheet(f"""
+            color: {COLORS['warning']};
+            font-size: {font_manager.base_size - 2}px;
+            padding: 2px 6px;
+            background-color: {COLORS['disclaimer_bg']};
+            border-radius: 3px;
+            font-weight: 600;
+        """)
+        self.pricing_label.setVisible(False)
+        first_row.addWidget(self.pricing_label)
+
+        # Second row: Action buttons
+        second_row = QHBoxLayout()
+        second_row.setSpacing(8)
 
         # Add Save button
         self.save_btn = AnimatedButton("💾 Save")
@@ -939,20 +1166,28 @@ class QueryTab(QWidget):
         self.copy_output_btn.clicked.connect(self.copy_output)
         self.copy_output_btn.setEnabled(False)
 
-        # Copy Query and Clear buttons - Updated label here
-        self.copy_btn = AnimatedButton("Copy Query")  # Changed from "Copy" to "Copy Query"
+        # Copy Query button
+        self.copy_btn = AnimatedButton("Copy Query")
         self.copy_btn.clicked.connect(self.copy_response)
 
+        # Clear button
         self.clear_btn = AnimatedButton("Clear")
         self.clear_btn.clicked.connect(self.clear_all)
 
-        header_layout.addWidget(self.input_char_count_label)
-        header_layout.addWidget(self.input_token_count_label)
-        header_layout.addWidget(self.show_raw_json_checkbox)
-        header_layout.addWidget(self.save_btn)
-        header_layout.addWidget(self.copy_output_btn)
-        header_layout.addWidget(self.copy_btn)
-        header_layout.addWidget(self.clear_btn)
+        # Create Project button
+        self.create_project_btn = AnimatedButton("📁 Create Project")
+        self.create_project_btn.clicked.connect(self.create_project_from_response)
+        self.create_project_btn.setEnabled(False)
+
+        second_row.addWidget(self.save_btn)
+        second_row.addWidget(self.copy_output_btn)
+        second_row.addWidget(self.copy_btn)
+        second_row.addWidget(self.clear_btn)
+        second_row.addWidget(self.create_project_btn)
+        second_row.addStretch()
+
+        header_layout.addLayout(first_row)
+        header_layout.addLayout(second_row)
 
         # Prompt Input - now with 9 lines minimum height
         self.prompt_edit = QTextEdit()
@@ -1046,6 +1281,10 @@ class QueryTab(QWidget):
         self.response_edit.setReadOnly(True)
         self.response_edit.setPlaceholderText("Response will appear here...")
         self.response_edit.setFont(font_manager.get_font("mono"))
+
+        # Enable line wrapping
+        self.response_edit.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+
         self.update_response_style()
 
         # Store the parsed response separately
@@ -1098,9 +1337,28 @@ class QueryTab(QWidget):
         # Get pricing info
         pricing = self.current_model_config.get("pricing", {"input": 0.001, "output": 0.002})
 
-        # Calculate costs in USD
-        input_cost = (input_tokens / 1000) * pricing["input"]
-        output_cost = (estimated_output_tokens / 1000) * pricing["output"]
+        # Check if using 1M context and if tokens exceed 200K
+        use_1m = self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context")
+        total_tokens = input_tokens + estimated_output_tokens
+
+        if use_1m and total_tokens > 200000:
+            # Premium pricing for tokens over 200K
+            base_input_tokens = min(input_tokens, 200000)
+            premium_input_tokens = max(0, input_tokens - 200000)
+
+            base_output_tokens = min(estimated_output_tokens, 200000 - base_input_tokens)
+            premium_output_tokens = estimated_output_tokens - base_output_tokens
+
+            input_cost = (base_input_tokens / 1000) * pricing["input"]
+            input_cost += (premium_input_tokens / 1000) * pricing.get("input_premium", pricing["input"] * 2)
+
+            output_cost = (base_output_tokens / 1000) * pricing["output"]
+            output_cost += (premium_output_tokens / 1000) * pricing.get("output_premium", pricing["output"] * 1.5)
+        else:
+            # Standard pricing
+            input_cost = (input_tokens / 1000) * pricing["input"]
+            output_cost = (estimated_output_tokens / 1000) * pricing["output"]
+
         total_cost = input_cost + output_cost
 
         # Format price display
@@ -1111,14 +1369,26 @@ class QueryTab(QWidget):
         else:
             price_text = f"${total_cost:.2f}"
 
-        self.pricing_label.setText(f"💰 ~{price_text} USD*")
-        self.pricing_label.setToolTip(
+        premium_note = " (Premium)" if use_1m and total_tokens > 200000 else ""
+        self.pricing_label.setText(f"💰 ~{price_text} USD*{premium_note}")
+
+        tooltip = (
             f"Fictional pricing estimate:\n"
             f"Input: ~{input_tokens:,} tokens × ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
             f"Output: ~{estimated_output_tokens:,} tokens × ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
             f"Total: ~{price_text} USD\n\n"
-            f"*Prices are fictional and for demonstration only"
         )
+
+        if use_1m and total_tokens > 200000:
+            tooltip += (
+                f"⚠️ Premium pricing applied for tokens >200K:\n"
+                f"Input: 2x base rate\n"
+                f"Output: 1.5x base rate\n\n"
+            )
+
+        tooltip += "*Prices are fictional and for demonstration only"
+
+        self.pricing_label.setToolTip(tooltip)
         self.pricing_label.setVisible(True)
 
     def stop_query(self):
@@ -1135,7 +1405,7 @@ class QueryTab(QWidget):
         self.stop_btn.setVisible(False)
         self.generate_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.response_info.setText("⏹️ Stopped")
+        self.response_info.setText("⏹ Stopped")
         self.show_message("Query stopped", "warning")
 
     def copy_output(self):
@@ -1204,9 +1474,13 @@ class QueryTab(QWidget):
                     content_to_save = self.parsed_response if self.parsed_response else self.response_edit.toPlainText()
 
                 # Add metadata header
+                use_1m = "Yes" if self.use_1m_context_checkbox.isChecked() else "No"
+                use_memory = "Yes" if self.use_memory_checkbox.isChecked() else "No"
                 metadata = f"""# Generated by MEX - Model EXplorer
 # Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 # Model: {self.model_combo.currentText()}
+# 1M Context: {use_1m}
+# Memory Tool: {use_memory}
 # Query Length: {len(self.prompt_edit.toPlainText())} characters
 # Response Length: {len(content_to_save)} characters
 # Format: {'Raw JSON' if (file_path.endswith('.json') or self.show_raw_json_checkbox.isChecked()) else 'Parsed Text'}
@@ -1246,17 +1520,33 @@ class QueryTab(QWidget):
             config = AVAILABLE_MODELS[model_key]
             self.current_model_config = config
 
+            # Show/hide 1M context checkbox based on model support
+            supports_1m = config.get("supports_1m_context", False)
+            self.use_1m_context_checkbox.setVisible(supports_1m)
+
+            # Show/hide memory checkbox based on model support
+            supports_memory = config.get("supports_memory", False)
+            self.use_memory_checkbox.setVisible(supports_memory)
+
+            # Determine max input tokens based on 1M context setting
+            if self.use_1m_context_checkbox.isChecked() and supports_1m:
+                max_input = config.get("max_input_tokens_extended", config["max_input_tokens"])
+            else:
+                max_input = config["max_input_tokens"]
+
             # Format the token display
-            input_display = self.format_token_display(config['max_input_tokens'])
+            input_display = self.format_token_display(max_input)
             output_display = self.format_token_display(config['max_output_tokens'])
 
-            # Update the label to show input/output limits
-            self.model_info.setText(f"{input_display}/{output_display} tokens")
+            # Update the label to show input/output limits with memory indicator
+            context_note = " (1M)" if self.use_1m_context_checkbox.isChecked() and supports_1m else ""
+            memory_note = " 🧠" if self.use_memory_checkbox.isChecked() and supports_memory else ""
+            self.model_info.setText(f"{input_display}/{output_display} tokens{context_note}{memory_note}")
 
             # Calculate approximate words and characters
-            input_words = int(config['max_input_tokens'] * 0.75)
+            input_words = int(max_input * 0.75)
             output_words = int(config['max_output_tokens'] * 0.75)
-            input_chars = config['max_input_tokens'] * 4  # Approximately 4 chars per token
+            input_chars = max_input * 4  # Approximately 4 chars per token
             output_chars = config['max_output_tokens'] * 4
 
             # Get pricing info
@@ -1265,16 +1555,34 @@ class QueryTab(QWidget):
             # Set detailed tooltip
             tooltip_text = f"""
             <b>{config['display_name']}</b><br><br>
-            <b>Input Token Limit:</b> {config['max_input_tokens']:,} tokens<br>
+            <b>Input Token Limit:</b> {max_input:,} tokens<br>
             ≈ {input_words:,} words or ~{input_chars:,} characters<br><br>
             <b>Output Token Limit:</b> {config['max_output_tokens']:,} tokens<br>
             ≈ {output_words:,} words or ~{output_chars:,} characters<br><br>
             <b>Fictional Pricing:</b><br>
             Input: ${pricing['input']:.3f} per 1K tokens<br>
-            Output: ${pricing['output']:.3f} per 1K tokens<br><br>
-            <b>Description:</b> {config.get('description', 'General purpose model')}<br><br>
+            Output: ${pricing['output']:.3f} per 1K tokens<br>
+            """
+
+            if supports_1m and self.use_1m_context_checkbox.isChecked():
+                tooltip_text += f"""
+            <br><b>Premium Pricing (>200K tokens):</b><br>
+            Input: ${pricing.get('input_premium', pricing['input'] * 2):.3f} per 1K tokens<br>
+            Output: ${pricing.get('output_premium', pricing['output'] * 1.5):.3f} per 1K tokens<br>
+                """
+
+            if supports_memory:
+                memory_status = "ENABLED" if self.use_memory_checkbox.isChecked() else "disabled"
+                tooltip_text += f"""
+            <br><b>Memory Tool:</b> {memory_status}<br>
+            {'✅ AI can remember context across conversations' if self.use_memory_checkbox.isChecked() else '❌ Memory tool disabled'}
+                """
+
+            tooltip_text += f"""
+            <br><b>Description:</b> {config.get('description', 'General purpose model')}<br><br>
             <i>Note: All pricing is fictional. Actual costs will vary.</i>
             """
+
             self.model_info.setToolTip(tooltip_text)
 
             # Update char count display to reflect current model's limit
@@ -1293,7 +1601,11 @@ class QueryTab(QWidget):
 
         # Get current model's max input tokens
         if self.current_model_config:
-            max_tokens = self.current_model_config['max_input_tokens']
+            # Check if using 1M context
+            if self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context"):
+                max_tokens = self.current_model_config.get("max_input_tokens_extended", self.current_model_config['max_input_tokens'])
+            else:
+                max_tokens = self.current_model_config['max_input_tokens']
 
             # Calculate percentage based on token approximation
             percentage = (approx_tokens / max_tokens) * 100 if max_tokens > 0 else 0
@@ -1441,6 +1753,7 @@ class QueryTab(QWidget):
             self.copy_btn.update_font_size(size)
             self.copy_output_btn.update_font_size(size)
             self.save_btn.update_font_size(size)
+            self.create_project_btn.update_font_size(size)
 
         # Update labels
         self.model_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {size - 2}px;")
@@ -1471,6 +1784,7 @@ class QueryTab(QWidget):
             self.copy_btn.update_theme()
             self.copy_output_btn.update_theme()
             self.save_btn.update_theme()
+            self.create_project_btn.update_theme()
 
         # Update labels and other elements
         self.update_char_count()
@@ -1501,7 +1815,7 @@ class QueryTab(QWidget):
             self.response_edit.setPlainText(self.parsed_response)
 
     def generate_response(self):
-        """Generate response with enhanced UX"""
+        """Generate response with enhanced UX and memory support"""
         prompt = self.prompt_edit.toPlainText().strip()
 
         if not prompt:
@@ -1510,13 +1824,25 @@ class QueryTab(QWidget):
 
         # Check against model's input limit
         if self.current_model_config:
-            max_chars = self.current_model_config['max_input_tokens'] * 4
+            # Determine max tokens based on 1M context usage
+            if self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context"):
+                max_tokens = self.current_model_config.get("max_input_tokens_extended", self.current_model_config['max_input_tokens'])
+            else:
+                max_tokens = self.current_model_config['max_input_tokens']
+
+            max_chars = max_tokens * 4
             if len(prompt) > max_chars:
                 self.show_message(f"Query exceeds maximum of {max_chars:,} characters for this model", "error")
                 return
 
         model_key = self.model_combo.currentData()
         model_config = AVAILABLE_MODELS[model_key]
+
+        # Get 1M context setting
+        use_1m_context = self.use_1m_context_checkbox.isChecked() and model_config.get("supports_1m_context", False)
+        
+        # Get memory setting
+        use_memory = self.use_memory_checkbox.isChecked() and model_config.get("supports_memory", False)
 
         # Start timing
         self.query_timer.start()
@@ -1535,7 +1861,11 @@ class QueryTab(QWidget):
         self.output_char_count_label.setVisible(False)
         self.output_token_count_label.setVisible(False)
 
-        self.worker = APIWorker(model_config, prompt, self.credentials)
+        # Show memory status in progress
+        if use_memory:
+            self.show_message("🧠 Memory tool enabled", "info")
+
+        self.worker = APIWorker(model_config, prompt, self.credentials, use_1m_context, use_memory)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_response)
         self.worker.start()
@@ -1563,15 +1893,23 @@ class QueryTab(QWidget):
             self.raw_response = raw_response
             self.parsed_response = response
 
-            # Enable save and copy buttons
+            logging.info(f"Displaying response: {len(response)} characters")
+
+            # Enable save, copy, and create project buttons
             self.save_btn.setEnabled(True)
             self.copy_output_btn.setEnabled(True)
+            self.create_project_btn.setEnabled(True)
 
             # Display based on checkbox state
             if self.show_raw_json_checkbox.isChecked():
                 self.toggle_response_format()
             else:
+                # Set the COMPLETE parsed response
                 self.response_edit.setPlainText(response)
+
+                # Force the text edit to update and show all content
+                self.response_edit.document().setModified(False)
+                self.response_edit.viewport().update()
 
             # Update output counts
             self.update_output_counts(response)
@@ -1579,8 +1917,29 @@ class QueryTab(QWidget):
             # Calculate actual pricing
             if self.current_model_config:
                 pricing = self.current_model_config.get("pricing", {"input": 0.001, "output": 0.002})
-                input_cost = (input_tokens / 1000) * pricing["input"]
-                output_cost = (output_tokens / 1000) * pricing["output"]
+
+                # Check if premium pricing applies
+                total_tokens = input_tokens + output_tokens
+                use_1m = self.use_1m_context_checkbox.isChecked() and self.current_model_config.get("supports_1m_context")
+
+                if use_1m and total_tokens > 200000:
+                    # Premium pricing
+                    base_input = min(input_tokens, 200000)
+                    premium_input = max(0, input_tokens - 200000)
+
+                    base_output = min(output_tokens, 200000 - base_input)
+                    premium_output = max(0, output_tokens - base_output)
+
+                    input_cost = (base_input / 1000) * pricing["input"]
+                    input_cost += (premium_input / 1000) * pricing.get("input_premium", pricing["input"] * 2)
+
+                    output_cost = (base_output / 1000) * pricing["output"]
+                    output_cost += (premium_output / 1000) * pricing.get("output_premium", pricing["output"] * 1.5)
+                else:
+                    # Standard pricing
+                    input_cost = (input_tokens / 1000) * pricing["input"]
+                    output_cost = (output_tokens / 1000) * pricing["output"]
+
                 total_cost = input_cost + output_cost
 
                 # Format price
@@ -1589,14 +1948,26 @@ class QueryTab(QWidget):
                 else:
                     price_text = f"${total_cost:.2f}"
 
-                self.response_info.setText(f"✅ {elapsed:.1f}s | {price_text} USD*")
-                self.response_info.setToolTip(
+                premium_note = " (Premium)" if use_1m and total_tokens > 200000 else ""
+                memory_note = " 🧠" if self.use_memory_checkbox.isChecked() and self.current_model_config.get("supports_memory") else ""
+                self.response_info.setText(f"✅ {elapsed:.1f}s | {price_text} USD*{premium_note}{memory_note}")
+
+                tooltip = (
                     f"Query completed in {elapsed:.1f} seconds\n"
                     f"Input: {input_tokens:,} tokens × ${pricing['input']:.3f}/1K = ${input_cost:.4f}\n"
                     f"Output: {output_tokens:,} tokens × ${pricing['output']:.3f}/1K = ${output_cost:.4f}\n"
-                    f"Total: {price_text} USD\n\n"
-                    f"*Fictional pricing for demonstration only"
+                    f"Total: {price_text} USD\n"
                 )
+
+                if use_1m and total_tokens > 200000:
+                    tooltip += "\n⚠️ Premium pricing applied for tokens >200K\n"
+                
+                if self.use_memory_checkbox.isChecked() and self.current_model_config.get("supports_memory"):
+                    tooltip += "\n🧠 Memory tool enabled\n"
+
+                tooltip += "\n*Fictional pricing for demonstration only"
+
+                self.response_info.setToolTip(tooltip)
             else:
                 self.response_info.setText(f"✅ {elapsed:.1f}s")
 
@@ -1604,8 +1975,115 @@ class QueryTab(QWidget):
             cursor = self.response_edit.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.Start)
             self.response_edit.setTextCursor(cursor)
+            self.response_edit.ensureCursorVisible()
 
-            self.show_message("Query executed successfully!", "success")
+            success_msg = f"Query executed successfully! ({len(response):,} chars)"
+            if self.use_memory_checkbox.isChecked() and self.current_model_config.get("supports_memory"):
+                success_msg += " 🧠 Memory active"
+            self.show_message(success_msg, "success")
+
+    def create_project_from_response(self):
+        """Create project folder structure from formatted response text"""
+        if not self.parsed_response and not self.response_edit.toPlainText():
+            self.show_message("No response to create project from", "warning")
+            return
+
+        # Get the response text
+        response_text = self.parsed_response if self.parsed_response else self.response_edit.toPlainText()
+
+        # Ask user for output directory
+        output_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Directory for Project",
+            str(Path.home()),
+            QFileDialog.Option.ShowDirsOnly
+        )
+
+        if not output_dir:
+            return
+
+        try:
+            # Parse the response to extract file paths and content
+            files_data = self.parse_project_structure(response_text)
+
+            if not files_data:
+                self.show_message("No file structure found in response", "warning")
+                return
+
+            # Create the project
+            files_created = 0
+            dirs_created = set()
+
+            for file_path, content in files_data.items():
+                full_path = Path(output_dir) / file_path
+                directory = full_path.parent
+
+                # Create directory if needed
+                if directory != Path(output_dir) and str(directory) not in dirs_created:
+                    directory.mkdir(parents=True, exist_ok=True)
+                    dirs_created.add(str(directory))
+
+                # Write file
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                    if content and not content.endswith('\n'):
+                        f.write('\n')
+
+                files_created += 1
+
+            # Show success message
+            self.show_message(
+                f"Project created! {files_created} files, {len(dirs_created)} directories",
+                "success"
+            )
+            logging.info(f"Project created at: {output_dir}")
+
+        except Exception as e:
+            error_msg = f"Failed to create project: {str(e)}"
+            self.show_message(error_msg, "error")
+            logging.error(error_msg, exc_info=True)
+
+    def parse_project_structure(self, text):
+        """Parse formatted text to extract file paths and content"""
+        import re
+        
+        files_data = {}
+        current_file = None
+        current_content = []
+        in_code_block = False
+
+        lines = text.split('\n')
+
+        for line in lines:
+            # Check for file path markers (bold text in markdown: **filepath**)
+            file_match = re.match(r'\*\*([^*]+)\*\*', line.strip())
+
+            if file_match:
+                # Save previous file if exists
+                if current_file and current_content:
+                    files_data[current_file] = ''.join(current_content).strip()
+
+                # Start new file
+                current_file = file_match.group(1)
+                current_content = []
+                in_code_block = False
+
+            # Check for code block markers
+            elif line.strip().startswith('```'):
+                if not in_code_block:
+                    in_code_block = True
+                else:
+                    in_code_block = False
+
+            # Collect content inside code blocks
+            elif in_code_block and current_file:
+                current_content.append(line + '\n')
+
+        # Save last file if exists
+        if current_file and current_content:
+            files_data[current_file] = ''.join(current_content).strip()
+
+        return files_data
 
     def clear_all(self):
         """Clear all fields"""
@@ -1616,6 +2094,7 @@ class QueryTab(QWidget):
         self.parsed_response = ""
         self.save_btn.setEnabled(False)
         self.copy_output_btn.setEnabled(False)
+        self.create_project_btn.setEnabled(False)
         self.output_char_count_label.setVisible(False)
         self.output_token_count_label.setVisible(False)
         self.pricing_label.setVisible(False)
@@ -1723,7 +2202,7 @@ class MainWindow(QMainWindow):
         app_title.setStyleSheet(f"color: {COLORS['text_primary']}; margin: 0 20px;")
 
         # Add project badge
-        project_badge = QLabel(f"📁 {PROJECT_ID}")
+        project_badge = QLabel(f"🎯 {PROJECT_ID}")
         project_badge.setStyleSheet(f"""
             color: {COLORS['primary']};
             font-size: {font_manager.base_size - 1}px;
@@ -2112,3 +2591,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
