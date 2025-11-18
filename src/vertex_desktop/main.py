@@ -22,7 +22,18 @@ from google.auth.transport.requests import Request
 # --- CONFIGURATION ---
 PROJECT_ID = None  # Will be set on startup
 LOCATION = os.environ.get("LOCATION", "global")
+
+# Endpoint configuration
 VERTEX_AI_ENDPOINT = "https://aiplatform.googleapis.com"
+AI_STUDIO_ENDPOINT = "https://generativelanguage.googleapis.com"
+
+# Endpoint types
+ENDPOINT_VERTEX_AI = "vertex_ai"
+ENDPOINT_AI_STUDIO = "ai_studio"
+
+# API Key (from environment or UI)
+API_KEY = os.environ.get("GOOGLE_API_KEY", None)
+
 DEFAULT_FONT_SIZE = 14
 
 # --- LOGGING SETUP ---
@@ -55,7 +66,8 @@ AVAILABLE_MODELS = {
             "output": 0.005
         },
         "supports_1m_context": False,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI]
     },
     "claude-3-7-sonnet": {
         "publisher": "anthropic",
@@ -71,7 +83,8 @@ AVAILABLE_MODELS = {
             "output": 0.015
         },
         "supports_1m_context": False,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI]
     },
     "claude-sonnet-4-5": {
         "publisher": "anthropic",
@@ -90,7 +103,8 @@ AVAILABLE_MODELS = {
             "output_premium": 0.0225  # 1.5x for >200K tokens
         },
         "supports_1m_context": True,
-        "supports_memory": True  # Memory tool support
+        "supports_memory": True,  # Memory tool support
+        "endpoint_support": [ENDPOINT_VERTEX_AI]
     },
     "claude-opus-4-1": {
         "publisher": "anthropic",
@@ -106,11 +120,13 @@ AVAILABLE_MODELS = {
             "output": 0.075
         },
         "supports_1m_context": False,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI]
     },
     "gemini-2-5-pro": {
         "publisher": "google",
         "model_id": "gemini-2.5-pro@default:streamGenerateContent",
+        "ai_studio_model_id": "gemini-2.5-pro",
         "display_name": "Gemini 2.5 Pro",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65536,
@@ -122,11 +138,13 @@ AVAILABLE_MODELS = {
             "output": 0.01
         },
         "supports_1m_context": False,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI, ENDPOINT_AI_STUDIO]
     },
     "gemini-2-5-flash": {
         "publisher": "google",
         "model_id": "gemini-2.5-flash@default:streamGenerateContent",
+        "ai_studio_model_id": "gemini-2.5-flash",
         "display_name": "Gemini 2.5 Flash",
         "max_input_tokens": 1048576,
         "max_output_tokens": 65535,
@@ -138,11 +156,13 @@ AVAILABLE_MODELS = {
             "output": 0.001
         },
         "supports_1m_context": False,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI, ENDPOINT_AI_STUDIO]
     },
     "gemini-3-pro-preview": {
         "publisher": "google",
         "model_id": "gemini-3-pro-preview-11-2025:streamGenerateContent",
+        "ai_studio_model_id": "gemini-3-pro-preview-11-2025",
         "display_name": "Gemini 3 Pro Preview",
         "max_input_tokens": 2097152,
         "max_output_tokens": 65536,
@@ -154,7 +174,8 @@ AVAILABLE_MODELS = {
             "output": 0.01
         },
         "supports_1m_context": True,
-        "supports_memory": False
+        "supports_memory": False,
+        "endpoint_support": [ENDPOINT_VERTEX_AI, ENDPOINT_AI_STUDIO]
     }
 }
 
@@ -658,13 +679,15 @@ class APIWorker(QThread):
     finished = pyqtSignal(str, str, str, int, int)  # response, error, raw_response, input_tokens, output_tokens
     progress = pyqtSignal(str, int)  # message, percentage
 
-    def __init__(self, model_config, prompt, credentials, use_1m_context=False, use_memory=False):
+    def __init__(self, model_config, prompt, credentials, use_1m_context=False, use_memory=False, endpoint_type=ENDPOINT_VERTEX_AI, api_key=None):
         super().__init__()
         self.model_config = model_config
         self.prompt = prompt
         self.credentials = credentials
         self.use_1m_context = use_1m_context
         self.use_memory = use_memory
+        self.endpoint_type = endpoint_type
+        self.api_key = api_key
         self._is_cancelled = False
 
     def cancel(self):
@@ -673,8 +696,28 @@ class APIWorker(QThread):
 
     def get_access_token(self):
         """Get a fresh access token for API calls."""
+        if self.endpoint_type == ENDPOINT_AI_STUDIO:
+            # AI Studio uses API key, not OAuth
+            return None
         self.credentials.refresh(Request())
         return self.credentials.token
+
+    def build_url(self):
+        """Build the appropriate URL based on endpoint type."""
+        if self.endpoint_type == ENDPOINT_AI_STUDIO:
+            # AI Studio endpoint format
+            if self.model_config["publisher"] == "google":
+                model_id = self.model_config.get("ai_studio_model_id", self.model_config["model_id"].split(":")[0])
+                return f"{AI_STUDIO_ENDPOINT}/v1beta/models/{model_id}:streamGenerateContent"
+            else:
+                raise ValueError(f"AI Studio endpoint does not support {self.model_config['publisher']} models")
+        else:
+            # Vertex AI endpoint format
+            publisher = self.model_config["publisher"]
+            model_id = self.model_config["model_id"]
+            model_path = model_id.split(":")[0]
+            method = model_id.split(":")[1] if ":" in model_id else "predict"
+            return f"{VERTEX_AI_ENDPOINT}/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/{publisher}/models/{model_path}:{method}"
 
     def build_request_payload(self):
         """Build the appropriate request payload based on the model publisher."""
@@ -869,26 +912,42 @@ class APIWorker(QThread):
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
+            # Authentication
             self.progress.emit("🔐 Authenticating...", 20)
-            access_token = self.get_access_token()
-            logging.info(f"🔑 Access Token (masked): {access_token[:10]}...{access_token[-5:]}")
+            
+            if self.endpoint_type == ENDPOINT_AI_STUDIO:
+                # AI Studio uses API key
+                if not self.api_key:
+                    self.finished.emit("", "API key required for AI Studio endpoint", "", 0, 0)
+                    return
+                access_token = None
+                logging.info("Using AI Studio endpoint with API key")
+            else:
+                # Vertex AI uses OAuth
+                access_token = self.get_access_token()
+                logging.info(f"🔑 Access Token (masked): {access_token[:10]}...{access_token[-5:]}")
 
             if self._is_cancelled:
                 self.finished.emit("", "Query cancelled by user", "", 0, 0)
                 return
 
-            publisher = self.model_config["publisher"]
-            model_id = self.model_config["model_id"]
-            model_path = model_id.split(":")[0]
-            method = model_id.split(":")[1] if ":" in model_id else "predict"
-
-            url = f"{VERTEX_AI_ENDPOINT}/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/{publisher}/models/{model_path}:{method}"
+            # Build URL based on endpoint type
+            url = self.build_url()
+            logging.info(f"Using endpoint: {self.endpoint_type}, URL: {url}")
 
             payload = self.build_request_payload()
-            headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json; charset=utf-8"
-            }
+            
+            # Build headers based on endpoint type
+            if self.endpoint_type == ENDPOINT_AI_STUDIO:
+                headers = {
+                    "Content-Type": "application/json; charset=utf-8",
+                    "x-goog-api-key": self.api_key
+                }
+            else:
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json; charset=utf-8"
+                }
 
             # Add beta headers
             beta_headers = []
@@ -1026,6 +1085,68 @@ class QueryTab(QWidget):
             }}
         """)
         first_row.addWidget(self.stop_btn)
+
+        # Endpoint selector
+        endpoint_label = QLabel("Endpoint:")
+        endpoint_label.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {font_manager.base_size - 2}px;")
+        first_row.addWidget(endpoint_label)
+        
+        self.endpoint_combo = QComboBox()
+        self.endpoint_combo.addItem("🔷 Vertex AI", ENDPOINT_VERTEX_AI)
+        self.endpoint_combo.addItem("🌟 AI Studio", ENDPOINT_AI_STUDIO)
+        self.endpoint_combo.setCurrentIndex(0)  # Default to Vertex AI
+        self.endpoint_combo.setMinimumWidth(120)
+        self.endpoint_combo.setMaximumWidth(150)
+        self.endpoint_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: {font_manager.base_size - 2}px;
+            }}
+            QComboBox:hover {{
+                border-color: {COLORS['primary']};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {COLORS['text_primary']};
+                margin-right: 5px;
+            }}
+        """)
+        self.endpoint_combo.currentIndexChanged.connect(self.on_endpoint_changed)
+        first_row.addWidget(self.endpoint_combo)
+
+        # API Key input (hidden by default, shown when AI Studio is selected)
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setPlaceholderText("Enter API Key")
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_input.setMinimumWidth(150)
+        self.api_key_input.setMaximumWidth(200)
+        self.api_key_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['warning']};
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: {font_manager.base_size - 2}px;
+            }}
+            QLineEdit:focus {{
+                border-color: {COLORS['primary']};
+            }}
+        """)
+        self.api_key_input.setVisible(False)  # Hidden by default
+        # Pre-fill from environment if available
+        if API_KEY:
+            self.api_key_input.setText(API_KEY)
+        first_row.addWidget(self.api_key_input)
 
         self.model_combo = QComboBox()
         self.model_combo.setMinimumWidth(200)
@@ -1587,8 +1708,36 @@ class QueryTab(QWidget):
 
             self.model_info.setToolTip(tooltip_text)
 
-            # Update char count display to reflect current model's limit
-            self.update_char_count()
+    def on_endpoint_changed(self):
+        """Handle endpoint selection changes"""
+        endpoint_type = self.endpoint_combo.currentData()
+        
+        # Show/hide API key input based on endpoint
+        if endpoint_type == ENDPOINT_AI_STUDIO:
+            self.api_key_input.setVisible(True)
+        else:
+            self.api_key_input.setVisible(False)
+        
+        # Update model combo to show only compatible models
+        current_model = self.model_combo.currentData()
+        self.model_combo.clear()
+        
+        # Add only models that support the selected endpoint
+        for key, config in AVAILABLE_MODELS.items():
+            endpoint_support = config.get("endpoint_support", [ENDPOINT_VERTEX_AI])
+            if endpoint_type in endpoint_support:
+                self.model_combo.addItem(f"{config['icon']} {config['display_name']}", key)
+        
+        # Try to restore previous selection if compatible
+        index = self.model_combo.findData(current_model)
+        if index >= 0:
+            self.model_combo.setCurrentIndex(index)
+        else:
+            # Default to first available model
+            self.model_combo.setCurrentIndex(0)
+        
+        # Update model info display
+        self.update_model_info()
 
     def update_char_count(self):
         """Update character and token counts with visual feedback"""
@@ -1867,7 +2016,30 @@ class QueryTab(QWidget):
         if use_memory:
             self.show_message("🧠 Memory tool enabled", "info")
 
-        self.worker = APIWorker(model_config, prompt, self.credentials, use_1m_context, use_memory)
+        # Get endpoint settings
+        endpoint_type = self.endpoint_combo.currentData()
+        api_key = None
+        
+        # Validate endpoint compatibility
+        endpoint_support = model_config.get("endpoint_support", [ENDPOINT_VERTEX_AI])
+        if endpoint_type not in endpoint_support:
+            self.show_message(f"Model {model_config['display_name']} is not available on the selected endpoint", "error")
+            self.generate_btn.setVisible(True)
+            self.stop_btn.setVisible(False)
+            self.progress_bar.setVisible(False)
+            return
+        
+        # Get API key if using AI Studio
+        if endpoint_type == ENDPOINT_AI_STUDIO:
+            api_key = self.api_key_input.text().strip()
+            if not api_key:
+                self.show_message("Please enter an API key for AI Studio endpoint", "error")
+                self.generate_btn.setVisible(True)
+                self.stop_btn.setVisible(False)
+                self.progress_bar.setVisible(False)
+                return
+
+        self.worker = APIWorker(model_config, prompt, self.credentials, use_1m_context, use_memory, endpoint_type, api_key)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_response)
         self.worker.start()
